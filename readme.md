@@ -13,7 +13,7 @@
 Até o momento, o backend está seperando os arquivos por tipo, por exemplo: services, que está lidando com todas as regras de negócio. Dessa forma, a estrutura está desorganizada, caso a estrutura cresça.
 <p align="center">
   <img src="https://ik.imagekit.io/xfddek6eqk/Sem_t_tulo_rnRTSVoEF.png" alt="Estrutura de pastas do Backend"/>
-  <p align="center">Imagem 1</p>
+  <p align="center">Estrutura de pastas do Backend</p>
 </p>
 
 Daqui para frente, serão separados por **Domínio**.
