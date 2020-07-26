@@ -160,4 +160,56 @@ export default AppointmentsRepository;
 ```
 > Quando uma classe *extends* outra, significa que ela irá herdar os métodos. Já o *implements* serve como um *shape(formato ou regra)* a ser seguido pela classe, mas **não** que herda seus métodos.
 
-#### **Dessa forma, os nossos services irão depender apenas de regras de repositório, e não necessariamente um repositório do TypeORM ou qualquer que seja a outra biblioteca.**
+#### **Dessa forma, os nossos services irão depender apenas de regras de repositório, e não necessariamente um repositório do TypeORM ou qualquer que seja a outra biblioteca. Na verdade, o service não deve ter ciência sobre o formato final da estrutura que persiste nossos dados.**
+
+## Reescrevendo Repositórios
+- Devo ter mais controle sobre os métodos do repositório, já que eles são herdados do TypeORM, como por exemplo: create, findOne e etc.
+- Ir no repositório do TypeORM e fazer a adição do meu próprio método create, que irá usar dois métodos do TypeORM. E também devo criar minha interface ICreateAppointmentDTO.ts:
+```typescript
+export default interface ICreateAppointmentDTO {
+  provider_id: string;
+  date: Date;
+}
+
+```
+
+```typescript
+import { getRepository, Repository } from 'typeorm';
+
+import IAppointmentsRepository from '@modules/appointments/repositories/IAppointmentsRepository';
+
+import ICreateAppointmentDTO from '@modules/appointments/dtos/ICreateAppointmentDTO';
+
+import Appointment from '@modules/appointments/infra/typeorm/entities/Appointment';
+
+class AppointmentsRepository implements IAppointmentsRepository {
+
+  private ormRepository: Repository<Appointment>;
+
+  constructor(){
+    this.ormRepository = getRepository(Appointment);
+  }
+
+
+	public async findByDate(date: Date): Promise<Appointment | undefined> {
+		const findAppointment = await this.ormRepository.findOne({
+			where: { date },
+		});
+		return findAppointment;
+	}
+
+  public async create({ provider_id, date }: ICraeteAppointmentDTO): Promise<Appointment>{
+    const appointment = this.ormRepository.create({
+      provider_id,
+      date
+    });
+
+    await this.ormRepository.save(appointment);
+
+    return appointment;
+  }
+}
+
+export default AppointmentsRepository;
+
+```
