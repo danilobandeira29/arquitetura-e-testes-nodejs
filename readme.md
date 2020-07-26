@@ -72,5 +72,33 @@ Daqui para frente, serão separados por **Domínio**.
   <p align="center">Estrutura de pastas da Camada de Domínio com a Camada de infra</p>
 </p>
 
+## Configurando os Imports
+- Ir no tsconfig, no atributo **baseUrl** colocar: 
+```
+"./src"
+```
+- E no atributo **paths** e colocar:
+```
+{ 
+  "@modules/*": ["modules/*"],
+  "@config/*": ["config/*"],
+  "@shared/*": ["shared/*]
+}
+```
+- Logo em seguida, arrumar todas as importações necessarias utilizando **@modules** ou **@config** ou **@shared**
+- Corrigir também os imports no arquivo **ormconfig.json**.
+- Colocar no **package.json** em **scripts**:
+```
+{
+    "build": "tsc",
+    "dev:server": "ts-node-dev -r tsconfig-paths/register --inspect --transpileOnly --ignore-watch node_modules src/shared/infra/http/server.ts",
+    "typeorm": "ts-node-dev -r tsconfig-paths/register ./node_modules/typeorm/cli.js"
+  },
+```
+- Instalar para lidar com as importações criadas no arquivo de configuração do TypeScript:
+```bash
+$ yarn add tsconfig-paths -D
+```
+- Rodar a aplicação para verificar se está funcionando.
 
 
