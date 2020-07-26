@@ -30,7 +30,7 @@ Daqui para frente, serão separados por **Domínio**.
 - **Aplica-se no Backend, Frontent e Mobile**.
 - **Criar testes, antes de criar as funcionalidades em si.**
 
-## Camada de Módulos/Domínio
+## **Camada de Módulos/Domínio**
 - Melhorar a estrutura de pastas da aplicação.
 - **Isolar** mais as responsabilidades com base no **domínio**, de qual área de conhecimento um arquivo faz parte.
 - Começar a dividir a aplicação em **módulos**.
@@ -101,4 +101,63 @@ $ yarn add tsconfig-paths -D
 ```
 - Rodar a aplicação para verificar se está funcionando.
 
+# SOLID
+## Liskov Substitution Principle
+- Este princípio define que um **objeto herdado de uma superclass A**, **deve ser possível alterá-lo de tal forma que aceite uma subclasse que também herda a A** sem que a aplicação pare de funcionar.
+- Nas camadas(repositories) que temos que dependem de outras bibliotecas(typeorm), devem ser possível alterá-las conforme necessário, seguindo um conjunto de regras. **E no final, iremos depender apenas de um conjunto de regras(interface), mas não necessariamente de uma biblioteca(typeorm) em específico**.
 
+```typescript
+// AppointmentsRepository que herda os métodos de um repositório padrão do TypeORM.
+import { EntityRepository, Repository } from 'typeorm';
+import Appointment from '@modules/appointments/infra/typeorm/entities/Appointment';
+
+@EntityRepository(Appointment)
+class AppointmentsRepository extends Repository<Appointment> {
+	public async findByDate(date: Date): Promise<Appointment | undefined> {
+		const findAppointment = await this.findOne({
+			where: { date },
+		});
+		return findAppointment;
+	}
+}
+
+export default AppointmentsRepository;
+
+```
+
+### **Aplicando Liskov Substitution Principle**
+- Criar uma interface para lidar com o repositório de appointments. Ou seja, estou criando minhas regras.
+```typescript
+import Appointment from '../infra/typeorm/entities/Appointment';
+
+export default interface IAppointmentsRepository {
+  findByDate(date: Date): Promise<Appointment | undefined>;
+}
+
+```
+
+- Ir no repositório do Typeorm e adicionar minhas novas regras a classe AppointmensRepository:
+```typescript
+import { EntityRepository, Repository } from 'typeorm';
+
+import IAppointmentsRepository from '@modules/appointments/repositories/IAppointmentsRepository';
+
+import Appointment from '@modules/appointments/infra/typeorm/entities/Appointment';
+
+@EntityRepository(Appointment)
+class AppointmentsRepository extends Repository<Appointment> implements IAppointmentsRepository {
+	public async findByDate(date: Date): Promise<Appointment | undefined> {
+		const findAppointment = await this.findOne({
+			where: { date },
+		});
+		return findAppointment;
+	}
+}
+
+export default AppointmentsRepository;
+
+
+```
+> Quando uma classe *extends* outra, significa que ela irá herdar os métodos. Já o *implements* serve como um *shape(formato ou regra)* a ser seguido pela classe, mas **não** que herda seus métodos.
+
+#### **Dessa forma, os nossos services irão depender apenas de regras de repositório, e não necessariamente um repositório do TypeORM ou qualquer que seja a outra biblioteca.**
