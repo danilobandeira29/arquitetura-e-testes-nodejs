@@ -101,8 +101,8 @@ $ yarn add tsconfig-paths -D
 ```
 - Rodar a aplicação para verificar se está funcionando.
 
-# SOLID
-## Liskov Substitution Principle
+# **SOLID**
+## **Liskov Substitution Principle**
 - Este princípio define que um **objeto herdado de uma superclass A**, **deve ser possível alterá-lo de tal forma que aceite uma subclasse que também herda a A** sem que a aplicação pare de funcionar.
 - Nas camadas(repositories) que temos que dependem de outras bibliotecas(typeorm), devem ser possível alterá-las conforme necessário, seguindo um conjunto de regras. **E no final, iremos depender apenas de um conjunto de regras(interface), mas não necessariamente de uma biblioteca(typeorm) em específico**.
 
@@ -213,3 +213,96 @@ class AppointmentsRepository implements IAppointmentsRepository {
 export default AppointmentsRepository;
 
 ```
+## **Dependency Inversion Principle**
+Este princípio define que:
+- **Módulos de alto-nível não devem depender de módulos de baixo-nível. Ambos devem depender apenas de abstrações(por exemplo, interfaces).**
+- **Abstrações não devem depender dos detalhes. Detalhes(implementações) devem depender das abstrações.**
+
+Ou seja, ao invés do meu **service depender diretamente do repositório do typeorm**, **ele agora depende apenas da interface do repositório, que será passado pela rota**.
+
+A rota faz parte da camada de infra, que é a mesma que se encontra o TypeORM, por isso não é necessário aplicar o mesmo princípio a ela. Já o **service faz parte da camada de domínio, logo, deve ser desacoplado da camada de infra** de tal modo que não tenha conhecimento do seu funcionamento.
+
+```typescript
+import { startOfHour } from 'date-fns';
+import { getCustomRepository } from 'typeorm';
+import Appointment from '@modules/appointments/infra/typeorm/entities/Appointment';
+import AppError from '@shared/errors/AppError';
+import AppointmentsRepository from '../repositories/AppointmentsRepository';
+
+interface Request {
+	provider_id: string;
+	date: Date;
+}
+
+class CreateAppointmentService {
+	public async execute({ provider_id, date }: Request): Promise<Appointment> {
+    //dependendo do repositorio do typeorm
+		const appointmentsRepository = getCustomRepository(AppointmentsRepository);
+
+		const appointmentDate = startOfHour(date);
+
+		const findAppointmentInSameDate = await appointmentsRepository.findByDate(
+			appointmentDate,
+		);
+
+		if (findAppointmentInSameDate) {
+			throw new AppError('This Appointment is already booked!');
+		}
+
+		const appointment = await appointmentsRepository.create({
+			provider_id,
+			date: appointmentDate,
+		});
+
+		return appointment;
+	}
+}
+
+export default CreateAppointmentService;
+
+```
+
+### **Aplicando o Dependency Inversion Principle**
+```typescript
+import { startOfHour } from 'date-fns';
+import Appointment from '@modules/appointments/infra/typeorm/entities/Appointment';
+import AppError from '@shared/errors/AppError';
+import IAppointmentsRepository from '../repositories/IAppointmentsRepository';
+
+interface IRequest {
+	provider_id: string;
+	date: Date;
+}
+
+class CreateAppointmentService {
+
+  //dependendo apenas da interface(abstração) do repositório, que será passado ao construtor ao ser instanciado um novo repositório na rota.
+  constructor(private appointmentsRepository: IAppointmensRepository) {}
+  
+	public async execute({ provider_id, date }: Request): Promise<Appointment> {
+		const appointmentDate = startOfHour(date);
+
+		const findAppointmentInSameDate = await this.appointmentsRepository.findByDate(
+			appointmentDate,
+		);
+
+		if (findAppointmentInSameDate) {
+			throw new AppError('This Appointment is already booked!');
+		}
+
+		const appointment = await this.appointmentsRepository.create({
+			provider_id,
+			date: appointmentDate,
+		});
+
+		return appointment;
+	}
+}
+
+export default CreateAppointmentService;
+
+``` 
+
+> Observação: A entidade Appointment ainda é provida pelo TypeORM, mas nesse caso não será aplicado o Dependecy Inversion Principle para não 'dificultar' o entendimento deste princípio.
+
+### Tanto *Liskov Substitution Principle* quanto *Dependency Inversion Principle* possuem conceitos similares. Resumidamente, o *Liskov Substitution Principle* diz que minha **camada de domínio deve depender de abstrações(interfaces), e não diretamente da camada de infra**. Já o *Dependency Inversion Principle* diz que **módulos devem depender de abstrações(interfaces) e não de outros módulos**.
