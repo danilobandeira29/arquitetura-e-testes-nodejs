@@ -306,3 +306,112 @@ export default CreateAppointmentService;
 > Observação: A entidade Appointment ainda é provida pelo TypeORM, mas nesse caso não será aplicado o Dependecy Inversion Principle para não 'dificultar' o entendimento deste princípio.
 
 ### Tanto *Liskov Substitution Principle* quanto *Dependency Inversion Principle* possuem conceitos similares. Resumidamente, o *Liskov Substitution Principle* diz que minha **camada de domínio deve depender de abstrações(interfaces), e não diretamente da camada de infra**. Já o *Dependency Inversion Principle* diz que **módulos devem depender de abstrações(interfaces) e não de outros módulos**.
+
+## Refatorações do Módulo de Usuários
+- Criar o repositório de usuários na camada de domínio, que será minha interface que ditará as regras para o repositório do typeorm seguir.
+```typescript
+// modules/users/repositories/IUsersRepository
+import User from '../infra/typeorm/entities/User';
+import ICreateUserDTO from '../dtos/ICreateUserDTO';
+
+export default interface IUsersRepository {
+
+	findByEmail(email: string): Promise<User | undefined>;
+	findById(id: string): Promise<User | undefined>;
+	create(data: ICreateUserDTO): Promise<User>;
+	save(user: User): Promise<User>;
+}
+
+```
+
+```typescript
+// modules/users/dtos/ICreateUserDTO
+export default interface ICreateUserDTO {
+	name: string;
+	email: string;
+	password: string;
+}
+
+```
+
+- Agora fazer a criação do repositório do typeorm.
+```typescript
+//modules/users/infra/typeorm/repositories/UsersRepository
+import { getRepository, Repository } from 'typeorm';
+
+import User from '../entities/User';
+import IUsersRepository from '@modules/users/repositories/IUsersRepository';
+
+class UsersRepository implements IUsersRepository{
+	private ormRepository: Repository<User>;
+
+	constructor(){
+		this.ormRepository = getRepository(User);
+	}
+
+	public async findByEmail(email: string): Promise<User>{
+		const user = this.ormRepository.findOne({ where: { email }});
+
+		return user;
+	}
+	public async findById(id: string): Promise<User>{
+		const user = this.ormRepository.findOne(id);
+
+		return user;
+	}
+
+	public async create(user: User): Promise<User>{
+		const user = this.ormRepository.create(user);
+
+		return this.ormRepository.save(user);
+	}
+
+	public async save(user: User): Promise<User>{
+		return this.ormRepository.save(user);
+	}
+}
+```
+
+- Agora devo utilizar a interface desse repositório no service, pois em cada service será enviado um repositório, e eu devo informar qual a sua interface.
+
+```typescript
+import { hash } from 'bcryptjs';
+import AppError from '@shared/errors/AppError';
+import User from '../infra/typeorm/entities/User';
+
+import IUsersRepository from '../repositories/IUsersRepository';
+
+interface IRequest {
+	name: string;
+	email: string;
+	password: string;
+}
+
+class CreateUserService {
+	constructor(private usersRepository: IUsersRepository) {}
+
+	public async execute({ name, email, password }: IRequest): Promise<User> {
+		const checkUserExist = await this.usersRepository.findByEmail(email);
+
+		if (checkUserExist) {
+			throw new AppError('Email already used!');
+		}
+
+		const hashedPassword = await hash(password, 8);
+
+		const user = await this.usersRepository.create({
+			name,
+			email,
+			password: hashedPassword,
+		});
+
+		return user;
+	}
+}
+
+export default CreateUserService;
+
+```
+> Fazer essas alterações para os demais services.
+
+- Ir nas rotas do domínio de usuários e fazer a instância do repositório do typeorm que será enviado pelo parâmetro de cada rota.
