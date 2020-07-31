@@ -415,3 +415,101 @@ export default CreateUserService;
 > Fazer essas alterações para os demais services.
 
 - Ir nas rotas do domínio de usuários e fazer a instância do repositório do typeorm que será enviado pelo parâmetro de cada rota.
+
+## **Injeção de Dependência**
+- Motivo de utilizar:
+	- Não precisar ficar passando os repositórios sempre que um service for instânciado.
+
+- Ir na pasta shared, criar uma pasta container e um index.ts
+```typescript
+import { container } from 'tsyringe';
+
+import IAppointmentsRepository from '@modules/appointsments/repositories/IAppointmentsRepository';
+import IUsersRepository from '@modules/users/repositories/IUsersRepository';
+
+import AppointmentsRepository from '@modules/appointments/infra/typeorm/repositories/AppointmentsRepository';
+
+import UsersRepository from '@modules/users/infra/typeorm/repositories/UsersRepository';
+
+container.registerSingleton<IAppointmentsRepository>('AppointmentsRepository', AppointmentsRepository);
+
+container.registerSingleton<IUsersRepository>('UsersRepository', UsersRepository);
+
+```
+
+- Ir nos services de appointments e fazer as alterações nos constructors de todos os appointments
+```typescript
+import { startOfHour } from 'date-fns';
+import { injectable, inject } from 'tsyringe';
+
+import Appointment from '@modules/appointments/infra/typeorm/entities/Appointment';
+import AppError from '@shared/errors/AppError';
+import IAppointmentsRepository from '../repositories/IAppointmentsRepository';
+
+interface IRequest {
+	provider_id: string;
+	date: Date;
+}
+
+// adicionar o decorator do tsyringe
+@injectable()
+class CreateAppointmentService {
+	constructor(
+		// e irá injetar essa dependência sempre que o service for instânciado.
+		@inject('AppointmentsRepository')
+		private appointmentsRepository: IAppointmentsRepository,
+	) {}
+
+	public async execute({ provider_id, date }: IRequest): Promise<Appointment> {
+		const appointmentDate = startOfHour(date);
+
+		const findAppointmentInSameDate = await this.appointmentsRepository.findByDate(
+			appointmentDate,
+		);
+
+		if (findAppointmentInSameDate) {
+			throw new AppError('This Appointment is already booked!');
+		}
+
+		const appointment = await this.appointmentsRepository.create({
+			provider_id,
+			date: appointmentDate,
+		});
+
+		return appointment;
+	}
+}
+
+export default CreateAppointmentService;
+
+```
+- Ir nas rotas de appointments, remover o repositório do typeorm, fazer a importação do container do tsyringe e utilizar o método resolve('inserir_o_service_aqui_onde_ele_seria_instanciado).
+```typescript
+import { Router } from 'express';
+import { container } from 'tsyringe';
+
+import CreateAppointmentService from '@modules/appointments/services/CreateAppointmentService';
+
+const appointmentsRouter = Router();
+
+appointmentsRouter.post('/', async (request, response) => {
+	const { provider_id, date } = request.body;
+
+	// const appointmentsRepository = new AppointmentsRepository();
+
+	// const createAppointments = new CreateAppointmentService();
+
+	// colocar agora desta forma
+	const createAppointments = container.resolve(CreateAppointmentService)
+	...
+
+
+});
+```
+
+- Ir no server.ts(arquivo principal) e fazer a importação do container de injeção de dependência.
+```typescript
+...
+import '@shared/container';
+...
+```
