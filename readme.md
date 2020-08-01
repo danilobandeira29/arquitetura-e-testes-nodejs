@@ -513,3 +513,56 @@ appointmentsRouter.post('/', async (request, response) => {
 import '@shared/container';
 ...
 ```
+
+## **Usando Controllers**
+- Controllers em uma arquitetura grande possuí pouca responsabilidade, **onde cuidará de abstrair a lógica que estão nas rotas**. Pois já existem os **Services que lidam com as regras de negócio** e o **Repositório que lida com a manipulação/persistência dos dados**.
+- As rotas estavam sendo responsáveis apenas por(agora será responsabilidade dos Controllers):
+	- Receber os dados da Requisição.
+	- Chamar outros arquivos para tratar os dados.
+	- Devolver a Resposta.
+- Seguindo os padrões de API Restful, os Controllers devem possuir apenas 5 métodos:
+	-	Index(listar todos)
+	- Show(listar apenas um)
+	-	Create(criar)
+	- Update(atualizar)
+	- Delete(apagar)
+> **Caso sejam necessários mais métodos, devo criar um novo controller.**
+```typescript
+// users/infra/http/controllers/SessionsController.ts
+import { Request, Response } from 'express';
+
+import { container } from 'tsyringe';
+import AuthenticateUserService from '@modules/users/services/AuthenticateUserService';
+
+class SessionsController {
+	public async create(request: Request, response: Response): Promise<Response> {
+		const { password, email } = request.body;
+
+		const authenticateUser = container.resolve(AuthenticateUserService);
+
+		const { user, token } = await authenticateUser.execute({ password, email });
+
+		delete user.password;
+
+		return response.json({ user, token });
+	}
+}
+
+export default SessionsController;
+
+```
+
+```typescript
+// sessions.routes.ts
+import { Router } from 'express';
+
+import SessionsController from '../controllers/SessionsController';
+
+const sessionsRouter = Router();
+const sessionsController = new SessionsController();
+
+sessionsRouter.post('/', sessionsController.create);
+
+export default sessionsRouter;
+
+```
