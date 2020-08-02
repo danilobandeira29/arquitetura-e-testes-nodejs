@@ -566,3 +566,43 @@ sessionsRouter.post('/', sessionsController.create);
 export default sessionsRouter;
 
 ```
+
+## **Testes e TDD**
+Criamos testes para garantir que nossa aplicação continue funcionando corretamente independente do número de funcionalidade e o número de desenvolvedores.
+### 3 Principais tipos de testes
+1. Teste Unitário
+2. Teste de Integração
+3. Teste E2E(end-to-end)
+## **Teste Unitário**
+- Testa funcionalidades específicas da aplicação.
+- Necessita que essas funcionalidades sejam **funções puras**.
+#### Funções Puras
+Não depende de outra parte da aplicação ou de serviço externo.
+
+**Jamais possuirá:**
+- Chamadas a API
+- Efeitos colaterais
+> Exemplo de efeito colateral: Disparar um email sempre que um novo usuário for criado
+
+## **Teste de Integração**
+Testa uma funcionalidade completa, passando por várias camadas da aplicação.
+
+Rota -> Controller -> Service -> Repository -> Service -> ...
+> Exemplo: Criação de um novo usuário com envio de email.
+
+## **Teste E2E(end-to-end)**
+- Simula a ação do usuário dentro da aplicação.
+- Utilizado em interfaces(React, React Native).
+
+Exemplo: 
+1. Clique no input de email
+2. Digite danilobandeira29@gmail.com
+3. Clique no input de senha
+4. Digite 123456
+5. Clique no botão "fazer login"
+6. Espera que o usuário seja redirecionado para a Dashboard
+
+## **Test Driven Development(TDD)**
+- "Desenvolvimento Dirigido a Testes".
+- Criamos alguns testes antes mesmo da criação da funcionalidade em si(ou algumas delas).
+> Exemplo: Quando o usuário se cadastrar na aplicação, ele deve receber um email de boas vindas.
