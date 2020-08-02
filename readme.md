@@ -606,3 +606,23 @@ Exemplo:
 - "Desenvolvimento Dirigido a Testes".
 - Criamos alguns testes antes mesmo da criação da funcionalidade em si(ou algumas delas).
 > Exemplo: Quando o usuário se cadastrar na aplicação, ele deve receber um email de boas vindas.
+
+## Configurando Jest
+```bash
+$ yarn add jest -D
+$ yarn jest --init
+$ yarn add @types/jest ts-jest -D
+```
+- Configurar o arquivo jest.config.js:
+preset: 'ts-jest',
+...,
+testMatch: [
+	'**/*.spec.ts'
+]
+- Criar um teste apenas para testar as configurações do jest.
+```typescript
+test('sum two numbers', () => {
+	expect(1 + 2).toBe(3);
+});
+
+```
