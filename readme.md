@@ -639,3 +639,88 @@ test('sum two numbers', () => {
 - **É difícil criar testes que dependem de coisas externas, como Banco de dados, envio de e-mail... etc.**
 - **Teste unitário não deve depender de nada além dele mesmo.** Mas no caso dos services, eles dependem de repository que se conecta com o banco. Por isso, irei criar um **fake repository**, onde **não** irá se conectar com o banco de dados. Banco de dados é passivo a erros, por isso evitar se conectar com ele nesse caso.
 - **Cada service irá gerar no mínimo um teste unitário.**
+
+## Criando Primeiro Teste Unitário
+- Ir na pasta do service do appointment e criar CreateAppointmentService.spec.ts
+```typescript
+describe('Create Appointment', () => {
+	it('should be able to create a new appointment', () => {
+	});
+});
+```
+- Irei criar um teste unitário pois é mais simples e **não deve depender de bibliotecas externas**, como o typeorm, algum database e afins.
+- Mas para isso, devo criar o meu **fake repository**, que terá a **minha interface de repositório e assim não irá depender do typeorm**, e irá salvar os dados na memória.
+
+### É possível notar o Liskov Substitution e Dependency Inversion Principle aqui. Onde meu service está dependendo apenas de um appointmentsRepository que tenha a tipagem IAppointmentsRepository, independende se é um repositório do typeorm(que salva no banco de dados) ou um repositório que dentro possuí métodos puros do JavaScript(que salva localmente).
+
+```typescript
+// @modules/appointments/repositories/fakes/FakeAppointmentsRepository
+
+import { uuid } from 'uuidv4';
+import Appointment from '@modules/appointments/infra/typeorm/entities/Appointments';
+import ICreateAppointmentDTO from '../dtos/ICreateAppointmentsDTO';
+import IAppointmentsRepository from '../IAppointmentsRepository';
+
+class FakeAppointmentsRepository implements IAppointmentsRepository {
+	private appointments: Appointments[] = [];
+
+	public async findByDate(date: Date): Promise<Appointment | undefined> {
+		const findAppointment = this.appointments.find(
+			appointment => appointment.date === date,
+		);
+
+		return findAppointment;
+	}
+
+	public async create({ provider_id, date }: ICreateAppointmentDTO): Promise<Appointment>{
+		const appointment = new Appointment();
+
+		Object.assign(appointment, { id: uuid(), date, provider_id });
+
+		this.appointments.push(appointment);
+
+		return appointment;
+	}
+}
+
+export default FakeAppointmentsRepository;
+
+```
+
+```typescript
+import FakeAppointmentsRepository from '@modules/appoinetments/repositories/fakes/FakeAppointmentsRepository';
+import CreateAppointmentService from './CreateAppointmentService';
+
+describe('Create Appointment', () => {
+	it('should be able to create a new appointment', () => {
+		const fakeAppointmentsRepository = new FakeAppointmentsRepository();
+		const createAppointment = new CreateAppointmentService(fakeAppointmentsRepository);
+
+		const appointment = await createAppointment.execute({
+			date: new Date(),
+			provider_id: '4444'
+		})
+
+		expect(appointment).toHaveProperty('id');
+		expect(appointment.provider_id).toBe('4444');
+	});
+});
+
+```
+
+> Ao tentar executar, irá dar error, pois o arquivo de testes não entende a importação @modules
+
+- Ir no jest.config.js e importar:
+```javascript
+const { pathsToModuleNameMapper } = require('ts-jest/utils');
+const { compilerOptions } = require('./tsconfig.json');
+
+module.exports = { 
+	moduleNameMapper: pathsToModuleNameMapper(compilerOptions.paths, { prefix: '<rootDir>/src/' })
+}
+
+```
+- Ir no tsconfig.json e remover todos os comentário e vírgulas desnecessárias.
+```bash
+$ yarn test
+```
