@@ -626,3 +626,16 @@ test('sum two numbers', () => {
 });
 
 ```
+
+## **Pensando em Testes**
+- **Devo criar testes para novas funcionalidades e para aquelas que já existem na aplicação.**
+- Irei criar testes unitários inicialmente. São testes menores e que **não devem depender de serviços externos**.
+- Criando um novo appointment:
+	- Preciso receber provider_id e uma data.
+	- Esse provider_id deve ser algum que já existe no banco?
+	- E se esse provider_id for deletado?
+	- Eu devo criar um novo usuário sempre que for executar os testes?
+	- Devo criar uma base de dados apenas para os testes?
+- **É difícil criar testes que dependem de coisas externas, como Banco de dados, envio de e-mail... etc.**
+- **Teste unitário não deve depender de nada além dele mesmo.** Mas no caso dos services, eles dependem de repository que se conecta com o banco. Por isso, irei criar um **fake repository**, onde **não** irá se conectar com o banco de dados. Banco de dados é passivo a erros, por isso evitar se conectar com ele nesse caso.
+- **Cada service irá gerar no mínimo um teste unitário.**
