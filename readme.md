@@ -724,3 +724,171 @@ module.exports = {
 ```bash
 $ yarn test
 ```
+
+## Coverage Report
+- Verifica arquivos para saber **quais arquivos já possuem teste**, **os que não estão sendo testados**, **entre outras informações**.
+- Para isso, devo ir no *jest.config.js* e habilitar:
+```javascript
+collectCoverage: true,
+collectCoverageFrom: [
+	'<rootDir>/src/modules/**/*.ts'
+],
+coverageDir: 'coverage', // vai ser criado essa pasta na raíz que irá guardar os relatórios
+coverageReporters: [
+	'text-summary',
+	'lcov',
+],
+
+```
+```bash
+$ yarn test
+
+```
+
+- Acessar o html ./coverage/lcov-report/index.html e visualizar o relatório de arquivos que foram cobertos pelos testes.
+
+## Testes de Agendamento
+```typescript
+import AppError from '@shared/errors/AppError';
+import FakeAppointmentsRepository from '../repositories/fakes/FakeAppointmentsRepository';
+import CreateAppointmentService from './CreateAppointmentService';
+
+describe('CreateAppointment', () => {
+	it('should be able to create a new appointment', async () => {
+		const fakeAppointmentsRepository = new FakeAppointmentsRepository();
+		const createAppointment = new CreateAppointmentService(
+			fakeAppointmentsRepository,
+		);
+
+		const appointment = await createAppointment.execute({
+			date: new Date(),
+			provider_id: '4444',
+		});
+
+		expect(appointment).toHaveProperty('id');
+		expect(appointment.provider_id).toBe('4444');
+	});
+
+	it('should not be able to create two appointments at the same time', async () => {
+		const fakeAppointmentsRepository = new FakeAppointmentsRepository();
+		const createAppointment = new CreateAppointmentService(
+			fakeAppointmentsRepository,
+		);
+		const date = new Date(2020, 5, 10, 14);
+
+		await createAppointment.execute({
+			date,
+			provider_id: '4444',
+		});
+
+		expect(
+			createAppointment.execute({
+				date,
+				provider_id: '4444',
+			}),
+		).rejects.toBeInstanceOf(AppError);
+	});
+});
+
+```
+
+## Testes de Criação de Usuário
+- **Os testes unitários, como dito anteriormente, não devem depender de apis ou database, por isso, vou criar meu repositório com Javascript puro para não depender do repositório do typeorm que se comunica com o banco de dados.**
+- Criar o repositório fake de users.
+```typescript
+// @modules/users/repositories/fakes/FakeUsersRepository.ts
+import { uuid } from 'uuidv4';
+
+import IUsersRepository from '../IUsersRepository';
+import User from '../../infra/typeorm/entities/User';
+import ICreateUserDTO from '../../dtos/ICreateUserDTO';
+
+class FakeUsersRepository implements IUsersRepository { 
+	private users: User[] = [];
+
+	public async findByEmail(email: string): Promise<User | undefined> {
+		const findUser = this.users.find(user => user.email === email);
+
+		return findUser;
+	}
+
+	public async findById(id: string): Promise<User | undefined> {
+		const findUser = this.users.find(user => user.id === id);
+
+		return findUser;
+	}
+
+	public async create(userData: ICreateUserDTO): Promise<User>{
+		const user = new User();
+
+		Object.assign(user, { id: uuid() }, userData);
+
+		this.users.push(user);
+
+		return user;
+	}
+
+	public async save(user: User): Promise<User>{
+		const findIndex = this.users.findIndex(findUser => findUser.id === user.id);
+
+		this.users[findIndex] = user;
+
+		return user;
+	}
+
+}
+
+```
+
+- Agora, criar os testes
+```typescript
+import AppError from '@shared/errors/AppError';
+import CreateUserService from './CreateUserService';
+import FakeUsersRepository from '../repositories/fakes/FakeUsersRepository';
+
+describe('CreateUser', () => {
+	it('should be able to create a new user', () => {
+		const fakeUsersRepository = new FakeUsersRepository();
+		const createUser = new CreateUserService(fakeUserRepository);
+
+		const user = await createUser.execute({
+			name: 'Test example',
+			email: 'test@example.com',
+			password: '123456'
+		});
+
+		expect(user).toHaveProperty('id');
+	});
+
+	it('should not be able to create two user with the same email', () => {
+		const fakeUsersRepository = new FakeUsersRepository();
+		const createUser = new CreateUserService(fakeUserRepository);
+
+		await createUser.execute({
+			name: 'Test example',
+			email: 'test@example.com',
+			password: '123456'
+		});
+
+		expect(createUser.execute({
+			name: 'Test example',
+			email: 'test@example.com',
+			password: '123456'
+		})).rejects.toBeInstanceOf(AppError);
+	});
+});
+
+```
+```bash
+$ yarn test
+
+```
+
+> Caso ocorra erro relacionado ao reflect-metadata, ir jest.config.js e colocar
+
+```javascript
+setupFiles: [
+		'reflect-metadata'
+	],
+
+```
