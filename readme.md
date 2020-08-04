@@ -892,3 +892,340 @@ setupFiles: [
 	],
 
 ```
+
+## Testes de Autenticação
+- Fazer a criação do AuthenticateUserService.spec.ts
+- Para isso, devo fazer a importação de outro service além do AuthenticateUserService, já que para autenticar um usuário, eu preciso criar um usuário.
+- Um teste **NUNCA** deve depender de outro.
+- Posso abordar de duas maneiras:
+	- Utilizar o método *create* do próprio repositório
+	- Utilizar o service CreateUserService
+
+```typescript
+import CreateUserService from './CreateUserService';
+import AuthenticateUserService from './AuthenticateUserService';
+
+describe('AuthenticateUser', () => {
+	it('should be able to authenticate', () => {
+		const fakeUsersRepository = new FakeUsersRepository();
+		const createUser = new CreateUserService(fakeUsersRepository);
+		const authenticateUser = new AuthenticateUserService(fakeUsersRepository);
+
+		const user = await createUser.execute({
+			name: 'Test unit',
+			email: 'testunit@example.com',
+			password: '123456',
+		})
+
+		const authUser = await authenticateUser.execute({
+			email: 'testunit@example.com',
+			password: '123456',
+		})
+
+		expect(authUser).toHaveProperty('token');
+		expect(authUser.user).toEqual(user);
+
+	});
+});
+
+```
+
+- Agora, é possível notar que o CreateUserService tem mais que uma responsabilidade:
+	- Criação de usuário
+	- Gerar hash para a senha do usuário
+- **Além de ferir o Single Responsability Principle, está ferindo também o Dependy Inversion Principle**, pois depende **diretamente** do bcryptjs(deveria depender apenas de uma interface) para a lógica de gerar a hash no **próprio** service de criação de usuário e autenticação de usuário.
+- Irei aproveitar e isolar o Hash para que seja possível reutilizar em outro service além do CreateUser/AuthenticateUser e assim não ferir o conceito **DRY(Don't Repeat Yourself)**, ou seja, **não repetir regras de negócio**.
+
+```typescript
+// CreateUserService
+import { hash } from 'bcryptjs';
+...
+
+@injectable()
+class CreateUserService {
+	constructor(
+		@inject('UsersRepository')
+		private usersRepository: IUsersRepository,
+	) {}
+
+	public async execute({ name, email, password }: IRequest): Promise<User> {
+		const checkUserExist = await this.usersRepository.findByEmail(email);
+
+		if (checkUserExist) {
+			throw new AppError('Email already used!');
+		}
+
+		const hashedPassword = await hash(password, 8);
+
+		...
+	}
+}
+
+export default CreateUserService;
+
+```
+
+```typescript
+import { compare } from 'bcryptjs';
+
+...
+
+@injectable()
+class AuthenticateUserService {
+	constructor(
+		@inject('UsersRepository')
+		private usersRepository: IUsersRepository,
+	) {}
+
+	public async execute({ password, email }: IRequest): Promise<IResponse> {
+		const user = await this.usersRepository.findByEmail(email);
+
+		if (!user) {
+			throw new AppError('Incorrect email/password combination.', 401);
+		}
+
+		const passwordMatched = await compare(
+			password,
+			user.password,
+		);
+
+	...
+	}
+}
+
+export default AuthenticateUserService;
+
+```
+
+
+
+- **Irei criar uma pasta providers que irá conter funcionalidades que serão oferecidas aos services.**
+- **Dentro da providers, irei criar HashProvider, que irá conter models(interface), implementations(quais bibliotecas irei utilizar para as hash), fakes(bibliotecas feitas com JS Puro para as hash).**
+
+```typescript
+// @modules/users/providers/HashProvider/models
+export default interface IHashProvider {
+	generateHash(payload: string): Promise<string>;
+	compareHash(payload: string, hashed: string): Promise<boolean>;
+}
+
+```
+
+```typescript
+// @modules/users/provider/HashProvider/implementations
+import { hash, compare } from 'bcrypjs';
+import IHashProvider from '../models/IHashProvider';
+
+class BCryptHashProvider implements IHashProvider {
+
+	public async generateHash(payload: string): Promise<string>{
+		return hash(payload, 8);
+	}
+
+	public async compareHash(payload: string, hashed: string): Promise<string>{
+		return compare(payload, hashed);
+	}
+
+}
+
+export default BCryptHashProvider;
+
+```
+
+- Ir no CreateUserService/AuthenticateUserService e **fazer com que ele dependa apenas da interface do HashProvider**.
+
+```typescript
+//CreateUserService
+import IHashProvider from '../providers/HashProvider/models/IHashProvider';
+
+@injectable()
+class CreateUserService {
+	constructor(
+		@inject('UsersRepository')
+		private usersRepository: IUsersRepository,
+
+		private hashProvider: IHashProvider,
+	) {}
+
+	public async execute({ name, email, password }: IRequest): Promise<User> {
+		const checkUserExist = await this.usersRepository.findByEmail(email);
+
+		if (checkUserExist) {
+			throw new AppError('Email already used!');
+		}
+
+		const hashedPassword = await this.hashProvider.generateHash(password);
+
+		const user = await this.usersRepository.create({
+			name,
+			email,
+			password: hashedPassword,
+		});
+
+		return user;
+	}
+}
+
+export default CreateUserService;
+
+```
+
+```typescript
+//AuthenticateUserService
+import { injectable, inject } from 'tsyringe';
+import { sign } from 'jsonwebtoken';
+import authConfig from '@config/auth';
+import AppError from '@shared/errors/AppError';
+import User from '../infra/typeorm/entities/User';
+
+import IUsersRepository from '../repositories/IUsersRepository';
+import IHashProvider from '../providers/HashProvider/models/IHashProvider';
+
+interface IRequest {
+	email: string;
+	password: string;
+}
+
+interface IResponse {
+	user: User;
+	token: string;
+}
+@injectable()
+class AuthenticateUserService {
+	constructor(
+		@inject('UsersRepository')
+		private usersRepository: IUsersRepository,
+
+		private hashProvider: IHashProvider,
+	) {}
+
+	public async execute({ password, email }: IRequest): Promise<IResponse> {
+		const user = await this.usersRepository.findByEmail(email);
+
+		if (!user) {
+			throw new AppError('Incorrect email/password combination.', 401);
+		}
+
+		const passwordMatched = await this.hashProvider.compareHash(
+			password,
+			user.password,
+		);
+
+		if (!passwordMatched) {
+			throw new AppError('Incorrect email/password combination.', 401);
+		}
+
+		const { secret, expiresIn } = authConfig.jwt;
+
+		const token = sign({}, secret, {
+			subject: user.id,
+			expiresIn,
+		});
+
+		return { user, token };
+	}
+}
+
+export default AuthenticateUserService;
+
+```
+
+- Agora preciso injetar a dependencia do IHashProvider.
+```typescript
+//@modules/users/provider/index.ts
+import { container } from 'tsyringe';
+
+import BCryptHashProvider from './HashProvider/implementations/BCryptHashProvider';
+import IHashProvider from './HashProvider/models/IHashProvider';
+
+container.registerSingleTon<IHashProvider>('HashProvider', BCryptHashProvider);
+
+```
+- Preciso injetar dessa dependência no service e importar esse index.ts no @shared/container/index.ts;
+
+```typescript
+import IHashProvider from '../providers/HashProvider/models/IHashProvider';
+
+@injectable()
+class CreateUserService {
+	constructor(
+		@inject('UsersRepository')
+		private usersRepository: IUsersRepository,
+
+		@inject('HashProvider')
+		private hashProvider: IHashProvider,
+	) {}
+
+	...
+
+	}
+}
+
+export default CreateUserService;
+
+```
+```typescript
+//@shared/container/index.ts
+import '@modules/users/providers';
+
+...
+
+```
+- Criar meu FakeHashProvider, **pois meus testes não devem depender de estrategias ou outras bibliotecas como bcryptjs**.
+```typescript
+import IHashProvider from '../models/IHashProvider';
+
+class FakeHashProvider implements IHashProvider {
+
+	public async generateHash(payload: string): Promise<string>{
+		return payload;
+	}
+
+	public async compareHash(payload: string, hashed: string): Promise<boolean>{
+		return payload === hashed;
+	}
+
+};
+
+export default FakeHashProvider;
+
+```
+
+- Ir no AuthenticateUserService.spec.ts
+
+```typescript
+import CreateUserService from './CreateUserService';
+import AuthenticateUserService from './AuthenticateUserService';
+import FakeHashProvider from '../providers/HashProvider/fakes/FakeHashProviders';
+
+describe('AuthenticateUser', () => {
+	it('should be able to authenticate', () => {
+		const fakeUsersRepository = new FakeUsersRepository();
+		const fakeHashProvider = new FakeHashProvider();
+		const createUser = new CreateUserService(
+			fakeUsersRepository,
+			fakeHashProvider
+		);
+		const authenticateUser = new AuthenticateUserService(
+			fakeUsersRepository,
+			fakeHashProvider
+		);
+
+		const user = await createUser.execute({
+			name: 'Test unit',
+			email: 'testunit@example.com',
+			password: '123456',
+		})
+
+		const authUser = await authenticateUser.execute({
+			email: 'testunit@example.com',
+			password: '123456',
+		})
+
+		expect(authUser).toHaveProperty('token');
+		expect(authUser.user).toEqual(user);
+
+	});
+});
+
+```
