@@ -933,7 +933,7 @@ describe('AuthenticateUser', () => {
 - Agora, é possível notar que o CreateUserService tem mais que uma responsabilidade:
 	- Criação de usuário
 	- Gerar hash para a senha do usuário
-- **Além de ferir o Single Responsability Principle, está ferindo também o Dependy Inversion Principle**, pois depende **diretamente** do bcryptjs(deveria depender apenas de uma interface) para a lógica de gerar a hash no **próprio** service de criação de usuário e autenticação de usuário.
+- **Além de ferir o Single Responsability Principle, está ferindo também o Dependency Inversion Principle**, pois depende **diretamente** do bcryptjs(deveria depender apenas de uma interface) para a lógica de gerar a hash no **próprio** service de criação de usuário e autenticação de usuário.
 - Irei aproveitar e isolar o Hash para que seja possível reutilizar em outro service além do CreateUser/AuthenticateUser e assim não ferir o conceito **DRY(Don't Repeat Yourself)**, ou seja, **não repetir regras de negócio**.
 
 ```typescript
@@ -1227,5 +1227,199 @@ describe('AuthenticateUser', () => {
 
 	});
 });
+
+```
+## Provider Storage
+- Atualmente, no **UpdateUserAvatarService** está sendo usado a lib multer para fazer upload de imagem. **Não podemos dizer que apenas o módulo de usuário fará upload de arquivos**, logo **iremos isolar está lógica para o shared** e fazer a criação de **models**, **implementations**, **fakes**, **injeção de dependência** como foi feita no HashProvider.
+
+```typescript
+
+class UpdateUserAvatarService {
+	constructor(
+		@inject('UsersRepository')
+		private usersRepository: IUsersRepository,
+	){}
+
+	public async execute({ user_id, avatarFilename }: IRequest): Promise<User> {
+		const user = await this.usersRepository.findById(user_id);
+		if (!user) {
+			throw new AppError('Only authenticated user can change avatar', 401);
+		}
+
+		// essa dependencia direta do multer deve ser retirada, pois acaba ferindo liskov substitution and dependency inversion principle
+		if (user.avatar) {
+			const userAvatarFilePath = path.join(uploadConfig.directory, user.avatar);
+			const userAvatarFileExists = await fs.promises.stat(userAvatarFilePath);
+			if (userAvatarFileExists) {
+				await fs.promises.unlink(userAvatarFilePath);
+			}
+			user.avatar = avatarFilename;
+			await this.usersRepository.save(user);
+
+			return user;
+		}
+	}
+}
+
+export default UpdateUserAvatarService;
+
+```
+
+- Criar pasta no *shared/container/providers/StorageProvider*.
+- Dentro de *StorageProvider* haverá **models**, **implementations**, **fakes**.
+
+```typescript
+	//shared/container/providers/StorageProvider/models/IStorageProvider.ts
+	
+	export default interface IStorageProvider {
+		saveFile(file: string): Promise<string>;
+		deleteFile(file: string): Promise<string>;
+	}
+
+```
+- Alterar o uploadConfig
+
+```typescript
+...
+
+const tmpFolder = path.resolve(__dirname, '..', '..', 'tmp' );
+
+export default {
+	tmpFolder,
+
+	uploadsFolder: path.join(tmpFolder, 'uploads');
+
+	...
+}
+
+```
+
+```typescript
+	//shared/container/providers/StorageProvider/implementations/DiskStorageProvider.ts
+	import fs from 'fs';
+	import path from 'path';
+	import uploadConfig from '@config/upload';
+
+	import IStorageProvider from '../models/IStorageProvider';
+
+	class DiskStorageProvider implements IStorageProvider {
+		public async saveFile(file: string): Promise<string>{
+			await fs.promises.rename(
+				path.resolve(uploadConfig.tmpFolder, file),
+				path.resolve(uploadConfig.uploadsFolder, file),
+			);
+
+			return file;
+		}
+
+		public async deleteFile(file: string): Promise<void>{
+			const filePath = path.resolve(uploadConfig.uploadsFolder, file);
+
+			try{
+				await fs.promises.stat(filePath);
+			} catch {
+				return;
+			}
+
+			await fs.promises.unlink(filePath);
+
+		}
+	}
+
+	export default DiskStorageProvider;
+
+```
+
+- Injetar a dependência que haverá no UpdateUserAvatarService;
+- Fazer a criação *@shared/container/providers/index.ts* e importar esse container no *@shared/container/index.ts*.
+
+```typescript
+import { container } from 'tsyringe';
+
+import IStorageProvider from './StorageProvider/models/IStorageProvider';
+import DiskStorageProvider from './StorageProvider/implementations/DiskStorageProvider';
+
+container.registerSingleton<IStorageProvider>(
+	'StorageProvider',
+	DiskStorageProvider);
+
+```
+
+- Ir no UpdateUserAvatarService.ts
+
+```typescript
+
+import path from 'path';
+import fs from 'fs';
+import uploadConfig from '@config/upload';
+import AppError from '@shared/errors/AppError';
+
+import { injectable, inject } from 'tsyringe';
+import IStorageProvider from '@shared/container/providers/StorageProvider/models/IStorageProvider';
+import User from '../infra/typeorm/entities/User';
+import IUsersRepository from '../repositories/IUsersRepository';
+
+interface IRequest {
+	user_id: string;
+	avatarFilename: string;
+}
+
+@injectable()
+class UpdateUserAvatarService {
+	constructor(
+		@inject('UsersRepository')
+		private usersRepository: IUsersRepository,
+
+		@inject('StorageProvider')
+		private storageProvider: IStorageProvider,
+	) {}
+
+	public async execute({ user_id, avatarFileName }: IRequest): Promise<User> {
+		const user = await this.usersRepository.findById(user_id);
+
+		if (!user) {
+			throw new AppError('Only authenticated user can change avatar', 401);
+		}
+
+		if (user.avatar) {
+			await this.storageProvider.deleteFile(user.avatar);
+		}
+
+		const filePath = await this.storageProvider.saveFile(avatarFileName);
+
+		user.avatar = filePath;
+
+		await this.usersRepository.save(user);
+
+		return user;
+	}
+}
+export default UpdateUserAvatarService;
+
+```
+- Fazer a criação do fakes storage provider, que serão utilizados nos testes já que os testes unitários não devem depender de nenhuma biblioteca.
+
+```typescript
+// @shared/container/providers/StorageProvider/fakes/FakeStorageProvider.ts
+	import IStorageProvider from '../models/IStorageProvider';
+
+	class FakeStorageProvider implements IStorageProvider {
+
+		private storage: string[] = [];
+
+		public async saveFile(file: string): Promise<string> {
+			this.storage.push(file);
+
+			return file;
+		}
+
+		public async deleteFile(file: string): Promise<void> {
+			const findIndex = this.storage.findIndex(item => item === file);
+
+			this.storage.splice(findIndex, 1);
+		}
+	}
+
+	export default FakeStorageProvider;
 
 ```
