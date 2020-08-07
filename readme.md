@@ -1618,3 +1618,122 @@ Feito em Engenharia de Software.
 - O usuário não pode agendar em um horário que já passou.
 - O usuário não pode agendar serviços consigo mesmo.
 - O usuário só pode fazer um agendamento por vez com um prestador de serviço.
+
+## Aplicando TDD na prática
+- Irei pegar uma funcionalidade macro e começar a escrever seus testes, pegando um requisito funcional por vez.
+
+**Problema**
+
+Como irei escrever testes de uma funcionalidade que ainda nem existe?
+
+**Solução**
+
+Para isso, irei criar uma estrutura básica e mínima, para que seja possível testar uma funcionalidade por completo mesmo que ela ainda não exista.
+
+- Criar o MailProvider na pasta shared, já que envio de email não será apenas necessariamente um pedido de recuperação de senha.
+
+- Criar em *@shared/container/providers/MailProvider* as pastas *models(regras que os implementations devem seguir), implementations(quais os provedores de serviço de email), fakes(para os testes)*.
+
+```typescript
+// models/IMailProvider
+
+export default interface IMailProvider {
+	sendMail(to: string, body: string): Promise<void>;
+}
+
+```
+
+```typescript
+// fakes/FakeMailProvider
+
+import IMailProvider from '../models/IMailProvider';
+
+interface IMessage { 
+	to: string;
+	body: string;
+}
+
+class FakeMailProvider implements IMailProvider {
+	private messages: IMessage[] = [];
+
+	public async sendMail(to: string, body: string): Promise<void> {
+		this.messages.push({
+			to,
+			body,
+		});
+	}
+}
+
+export default FakeMailProvider;
+
+```
+
+- Criar *SendForgotPasswordEmailService.ts* e *SendForgotPasswordEmailService.spec.ts*
+
+```typescript
+// SendForgotPasswordEmailService.ts
+import { injectable, inject } from 'tsyringe';
+
+import IUsersRepository from '../repositories/IUsersRepository';
+import IMailProvider from '@shared/container/providers/MailProvider/models/IMailProvider';
+
+interface IRequest {
+	email: string;
+}
+
+@injectable()
+class SendForgotPasswordEmailService {
+	constructor(
+		@inject('UsersRepository')
+		private usersRepository: IUsersRepository,
+
+		@inject('MailProvider')
+		private mailProvider: IMailProvider
+	)
+
+	public async execute({ email }: IRequest): Promise<void>{
+		this.mailProvider.sendMail(email, 'Pedido de recuperação de senha');
+	};
+}
+
+export default SendForgotPasswordEmailService
+
+```
+
+```typescript
+// SendForgotPasswordEmailService.spec.ts
+
+import SendForgotPasswordEmailService from './SendForgotPasswordEmailService';
+import FakeUsersRepository from '../repositories/fakes/FakeUsersRepository';
+import FakeMailProvider from '@shared/container/providers/MailProvider/fakes/FakeMailProvider';
+
+describe('SendForgotPasswordEmail', () => {
+	it('should be able to recover the password using email', () => {
+		const fakeUsersRepository = new FakeUsersRepository();
+		const fakeMailProvider = new FakeMailProvider();
+
+		const sendForgotPasswordEmail = new SendForgotPasswordEmailService(
+			fakeUsersRepository,
+			fakeMailProvider,
+		);
+
+		const sendMail = jest.spyOn(fakeMailProvider, 'sendMail');
+
+		await fakeUsersRepository.create({
+			name: 'Test example',
+			email: 'test@example.com',
+			password: '123456',
+		});
+
+		await sendForgotPasswordEmail.execute({
+			email: 'test@example.com',
+		});
+
+		expect(sendMail).toHaveBeenCalled();
+		
+	})
+});
+
+```
+
+- Agora basta executar o teste.
