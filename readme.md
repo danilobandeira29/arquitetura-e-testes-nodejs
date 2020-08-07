@@ -1506,3 +1506,115 @@ describe('UpdateUserAvatarService', () => {
 
 ```
 > const deleteFile = jest.spyOn(fakeStorageProvider, 'deleteFile') verifica se a função foi chamada ou não, e no final eu *espero* se ela tenha sido chamada com o parâmetro *avatar.jpg*.
+
+# Mapeando Features da Aplicação
+Feito em Engenharia de Software.
+
+**Devo**:
+
+	- Mapear os Requisitos
+	- Conhecer as Regras de Negócio
+
+- **Nem sempre o DEV terá os recursos necessários para mapear as TODAS funcionalidades da aplicação.**
+
+### **O GoBarber será mapeado com base no seu Design. Nesse caso, será apenas para dar um norte para a gente, o mapeamento das features não precisa descrever exatamente TODAS as funcionalidades, algumas delas irão surgir durante o desenvolvimento.**
+
+- No mundo real, deve ser feitas **MUITAS REUNIÕES** com o **CLIENTE** para que sejão feitas **MUITAS ANOTAÇÕES**, para **MAPEAR AS FUNCIONALIDADES** e **REGRAS DE NEGÓCIO**!
+
+- Será **BASEADO** no **Feedback** do **Cliente** para que seja melhorado. Nem sempre irei acertar de primeira.
+
+- **Devo pensar num projeto de maneira simples**. Não adianta criar muitas funcionalidades se o cliente utiliza apenas 20% delas e quer que elas sejam melhoradas.
+
+- Criar pensando nas **Funcionalidades Macro**.
+
+## Funcionalidades Macro
+- Por dentro são **bem definidas**, mas conseguimos ver elas como **como uma tela** da aplicação.
+
+- E cada funcionalidade macro será bem descrita e documentada, sendo dividida em: Requisitos Funcionais, Não-Funcionais e Regras de Negócio.
+
+### Requisitos Funcionais
+- Descreve a funcionalidade em si.
+
+### Requisitos Não-Funcionais
+- Não é ligada diretamente as Regras de Negócio.
+- Voltado para a parte técnica.
+- Está ligado a alguma lib que escolhemos utilizar.
+
+### Regras de Negócio	
+- São restrições para que a funcionalidade possa ser executada.
+- É legal uma regra de negócio estar associada da um requisito funcional.
+
+## **Funcionalidades Macro - GoBarber**
+
+### **Recuperação de Senha**
+**Requisitos Funcionais**
+
+- O usuário deve poder alterar a senha informando seu email.
+- O usuário deve receber um email com instruções para resetar sua senha.
+- O usuário deve poder alterar sua senha.
+
+**Requisitos Não-Funcionais**
+
+- Utilizar o Mailtrap para testes em ambiente de desenvolvimento.
+- Utilizar o Amazon SES para envio de email em produção
+- O envio de email deve acontecer em segundo plano(background job).
+> Exemplo: se **400 usuários tentarem recuperar a senha ao mesmo tempo, seria tentando enviar 400 email ao mesmo tempo**, o que poderia **causar lentidão no serviço**. Por isso, a abordagem adotada será de **fila(background job)**, onde a fila será processado aos poucos pela ferramenta.
+
+**Regras de Negócio**
+
+- O link que será enviado pelo email, deve expirar em 2h.
+- O usuário deve confirmar a senha ao resetar a senha.
+
+#### **Atualização do Perfil**
+**Requistos Funcionais**
+
+- O usuário deve poder atualizar seu nome, email e senha.
+
+<s>**Requistos Não-Funcionais**</s>
+
+**Regras de Negócio**
+
+- O usuário não pode alterar o email para um outro email já utilizado por outro usuário.
+- O usuário ao alterar a senha, deve informar a antiga.
+- O usuário ao alterar a senha, deve confirmar a nova senha.
+
+#### Painel do Prestador
+**Requistos Funcionais**
+
+- O usuário deve poder exibir os agendamentos de um dia específico.
+- O prestador deve receber um notificação sempre que houver um novo agendamento.
+- O prestador deve poder visualizar as notificações não lidas.
+
+**Requistos Não-Funcionais**
+
+- Os agendamentos do prestador no dia devem ser armazenados em cache.
+> Pois é possível que o prestador fique recarregando a página muitas vezes ao longo do dia. Logo, o cache será limpo e armazenado apenas quando tiver um novo agendamento.
+
+- As notificações do prestador devem ser armazenadas no MongoDB.
+- As notificações do prestador devem ser enviadas em tempo-real utilizando Socket.io.
+
+**Regras de Negócio**
+
+- A notificação deve ter um status de lida ou não-lida para que o prestador possa controlar. 
+
+#### Agendamento de Serviço
+**Requistos Funcionais**
+
+- O usuário deve poder listar todos os prestadores de serviço cadastrados.
+- O usuário deve poder listar dias de um mês com pelo menos um horário disponível pelo prestador.
+- O usuário deve poder listar horários disponíveis em um dia específico de um prestador.
+- O usuário deve poder realizar um novo agendamento com o prestador.
+
+**Requistos Não-Funcionais**
+
+- A listagem de prestadores deve ser armazenada em cache.
+> Dessa forma, irá **evitar** gasto de processamento da máquina.
+
+**Regras de Negócio**
+
+- Cada agendamento deve durar 1h exatamente.
+- Os agendamentos devem estar disponíveis entre 8h às 18h (primeiro horário às 8h, último as 17h).
+- O usuário não pode agendar em um horário já ocupado.
+- O usuário não pode agendar em um horário que já passou.
+- O usuário não pode agendar serviços consigo mesmo.
+- O usuário só pode fazer um agendamento por vez com um prestador de serviço.
