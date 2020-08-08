@@ -1737,3 +1737,280 @@ describe('SendForgotPasswordEmail', () => {
 ```
 
 - Agora basta executar o teste.
+
+## Recuperando a senha
+- Construir um teste para que não seja possível recuperar a senha de um usuário que não existe
+
+```typescript
+describe('SendForgotPasswordEmail', () => {
+	it('should be able to recover the password using email', () => {
+		const fakeUsersRepository = new FakeUsersRepository();
+		const fakeMailProvider = new FakeMailProvider();
+
+		const sendForgotPasswordEmail = new SendForgotPasswordEmailService(
+			fakeUsersRepository,
+			fakeMailProvider,
+		);
+
+		const sendMail = jest.spyOn(fakeMailProvider, 'sendMail');
+
+		await fakeUsersRepository.create({
+			name: 'Test example',
+			email: 'test@example.com',
+			password: '123456',
+		});
+
+		await sendForgotPasswordEmail.execute({
+			email: 'test@example.com',
+		});
+
+		expect(sendMail).toHaveBeenCalled();
+		
+	});
+
+	it('should not be able to recover the password a non-existing user', () => {
+		const fakeUsersRepository = new FakeUsersRepository();
+		const fakeMailProvider = new FakeMailProvider();
+
+		const sendForgotPasswordEmail = new SendForgotPasswordEmailService(
+			fakeUsersRepository,
+			fakeMailProvider,
+		);
+
+		await	expect(
+			sendForgotPasswordEmail.execute({
+			email: 'test@example.com',
+		})).rejects.toBeInstanceOf(AppError);
+		
+	})
+});
+```
+
+- Caso eu execute esse novo teste(*should not be able to recover the password a non-existing user*), ocorrerá um 'erro' falando que: 'era esperado um erro, mas a promise foi resolvida'. Ou seja, ao invés de ser *reject*, ela foi *resolved*.
+
+- Se for observado no service *SendForgotPasswordEmailService.ts*, é possível ver que não existe nenhuma verificação se o usuário existe ou não antes de enviar o email, logo, deve ser adicionado.
+
+```typescript
+// SendForgotPasswordEmailService.ts
+import { injectable, inject } from 'tsyringe';
+
+import IUsersRepository from '../repositories/IUsersRepository';
+import IMailProvider from '@shared/container/providers/MailProvider/models/IMailProvider';
+
+interface IRequest {
+	email: string;
+}
+
+@injectable()
+class SendForgotPasswordEmailService {
+	constructor(
+		@inject('UsersRepository')
+		private usersRepository: IUsersRepository,
+
+		@inject('MailProvider')
+		private mailProvider: IMailProvider
+	)
+
+	public async execute({ email }: IRequest): Promise<void>{
+		const checkUserExist  = await this.usersRepository.findByEmail(email);
+
+		if (!checkUserExist ) {
+			throw new AppError('User does not exists.');
+		}
+
+		this.mailProvider.sendMail(email, 'Pedido de recuperação de senha');
+	};
+}
+
+export default SendForgotPasswordEmailService
+
+```
+**Dessa forma, foi possível notar que o service foi sendo montado com base nos testes da aplicação.**
+
+### Recuperando a senha
+**Problema**
+
+Foi observado que no link que o usuário irá receber por email, deve ter uma criptografia(token) para que não seja possível alterar a senha de outro usuário, e para garantir que a recuperação de senha tenha sido provido de uma solicitação.
+
+**Solução**
+
+1. Criar e mapear entidadeUserToken em *@modules/users/infra/typeorm/entities*
+```typescript
+// @modules/users/infra/typeorm/entities/UserToken.ts
+import {
+	Entity,
+	PrimaryGeneratedColumn,
+	Column,
+	CreateDateColumn,
+	UpdateDateColumn,
+	Generated,
+} from 'typeorm';
+
+@Entity('user_tokens')
+class UserToken {
+	@PrimaryGeneratedColumn('uuid')
+	id: string;
+
+	@Column()
+	@Generated('uuid')
+	token: string;
+
+	@Column()
+	user_id: string;
+
+	@CreateDateColumn()
+	created_at: Date;
+
+	@UpdateDateColumn()
+	updated_at: Date;
+}
+
+export default UserToken;
+
+```
+
+2. Criar a interface para o repositório de IUserToken
+```typescript
+import UserToken from '../infra/typeorm/entities/UserToken';
+
+export default interface IUserTokenRepository {
+	generate(user_id: string): Promise<UserToken>;
+}
+
+```
+3. Criar o repositório fake utilizando a interface
+
+```typescript
+import { uuid } from 'uuidv4';
+
+import UserToken from '../../infra/typeorm/entities/UserToken';
+import IUserTokenRepository from '../IUserTokenRepository';
+
+class FakeUserTokensRepository implements IUserTokenRepository {
+
+	public async generate(user_id: string): Promise<UserToken> {
+		const userToken = new UserToken();
+
+		Object.assign(userToken, {
+			id: uuid(),
+			token: uuid(),
+			user_id,
+		})
+
+		return userToken;
+	}
+
+}
+
+export default FakeUserTokensRepository;
+
+```
+4. Criar o teste para verificar se o método do repositório para criação de token está sendo chamado.
+5. Alterar no *SendForgotPasswordEmailService.ts* para que seja utilizado o método *generate* do UserTokensRepository
+
+```typescript
+import { injectable, inject } from 'tsyringe';
+
+import IUsersRepository from '../repositories/IUsersRepository';
+import IUserTokensRepository from '../repositories/IUserTokensRepository';
+import IMailProvider from '@shared/container/providers/MailProvider/models/IMailProvider';
+
+interface IRequest {
+	email: string;
+}
+
+@injectable()
+class SendForgotPasswordEmailService {
+	constructor(
+		@inject('UsersRepository')
+		private usersRepository: IUsersRepository,
+
+		@inject('MailProvider')
+		private mailProvider: IMailProvider,
+
+		@inject('UserTokensRepository')
+		private userTokensRepository: IUserTokensRepository,
+	)
+
+	public async execute({ email }: IRequest): Promise<void>{
+		const user  = await this.usersRepository.findByEmail(email);
+
+		if (!user) {
+			throw new AppError('User does not exists.');
+		}
+
+		await this.userTokensRepository.generate(user.id);
+
+		await this.mailProvider.sendMail(email, 'Pedido de recuperação de senha');
+	};
+}
+
+```
+6. Declarar variaveis(let) no arquivo, e adicionar o método *beforeEach* para instânciar as classes necessárias antes de cada teste, para evitar a repetição de criação instâncias.
+
+```typescript
+import AppError from '@shared/errors/AppError';
+
+import FakeMailProvider from '@shared/container/providers/MailProvider/fakes/FakeMailProvider';
+import FakeUserTokenRepository from '@modules/users/repositories/fakes/FakeUserTokensRepository';
+import FakeUsersRepository from '../repositories/fakes/FakeUsersRepository';
+import SendForgotPasswordEmailService from './SendForgotPasswordEmailService';
+
+let fakeUsersRepository: FakeUsersRepository;
+let fakeUserTokensRepository: FakeUserTokenRepository;
+let fakeMailProvider: FakeMailProvider;
+let sendForgotPasswordEmail: SendForgotPasswordEmailService;
+
+describe('SendForgotPasswordEmail', () => {
+	beforeEach(() => {
+		fakeUsersRepository = new FakeUsersRepository();
+		fakeUserTokensRepository = new FakeUserTokenRepository();
+		fakeMailProvider = new FakeMailProvider();
+
+		sendForgotPasswordEmail = new SendForgotPasswordEmailService(
+			fakeUsersRepository,
+			fakeMailProvider,
+			fakeUserTokensRepository,
+		);
+	});
+
+	it('should be able to recover the password using the email', async () => {
+		const sendEmail = jest.spyOn(fakeMailProvider, 'sendMail');
+
+		await fakeUsersRepository.create({
+			name: 'Test example',
+			email: 'test@example.com',
+			password: '123456',
+		});
+
+		await sendForgotPasswordEmail.execute({
+			email: 'test@example.com',
+		});
+
+		expect(sendEmail).toHaveBeenCalled();
+	});
+
+	it('should not be able to recover the password of a non-existing user', async () => {
+		await expect(
+			sendForgotPasswordEmail.execute({
+				email: 'test@example.com',
+			}),
+		).rejects.toBeInstanceOf(AppError);
+	});
+
+	it('should generate a forgot password token', async () => {
+		const generateToken = jest.spyOn(fakeUserTokensRepository, 'generate');
+
+		const user = await fakeUsersRepository.create({
+			name: 'Test example',
+			email: 'test@example.com',
+			password: '123456',
+		});
+
+		await sendForgotPasswordEmail.execute({ email: 'test@example.com' });
+
+		expect(generateToken).toHaveBeenCalledWith(user.id);
+	});
+});
+
+```
