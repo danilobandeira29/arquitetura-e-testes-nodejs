@@ -2125,9 +2125,9 @@ export default ResetPasswordService;
 ## Finalizando os testes
 1. Ir no *ResetPasswordService.spec.ts* e adiciona mais teste unitários referentes a:
 
-[ ] caso userToken inexistente
-[ ] caso user inexistente
-[ ] que o token expire em 2h
+- [ ] caso userToken inexistente
+- [ ] caso user inexistente
+- [ ] que o token expire em 2h
 
 ```typescript
 import AppError from '@shared/errors/AppError';
@@ -2309,6 +2309,6 @@ export default ResetPasswordService;
 > addHours adiciona horas em alguma date especifica;
 > isAfter irá comparar se a data que o service foi executado é maior que a data que token foi criado somado a 2 horas. Se isso for verdade, quer dizer que a tokenCreatedAt+2(horas) passou do horário atual, ou seja, que o token expirou.
 
-[x] caso userToken inexistente
-[x] caso user inexistente
-[x] que o token expire em 2h
+- [x] caso userToken inexistente
+- [x] caso user inexistente
+- [x] que o token expire em 2h
