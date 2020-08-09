@@ -2121,3 +2121,194 @@ class ResetPasswordService {
 export default ResetPasswordService;
 
 ```
+
+## Finalizando os testes
+1. Ir no *ResetPasswordService.spec.ts* e adiciona mais teste unitários referentes a:
+
+[ ] caso userToken inexistente
+[ ] caso user inexistente
+[ ] que o token expire em 2h
+
+```typescript
+import AppError from '@shared/errors/AppError';
+
+import FakeUsersRepository from '../repositories/fakes/FakeUsersRepository';
+import FakeUserTokensRepository from '../repositories/fakes/FakeUserTokensRepository';
+import FakeHashProvider from '../provider/HashProvider/fakes/FakeHashProvider';
+import ResetPasswordService from './ResetPasswordService';
+
+let fakeUsersRepository: FakeUsersRepository;
+let fakeUserTokensRepository: FakeUserTokensRepository;
+let resetPassword: ResetPasswordService;
+
+describe('ResetPassword', () => {
+	beforeEach(() => {
+		fakeUsersRepository = new FakeUsersRepository();
+		fakeUserTokensRepository = new FakeUserTokensRepository();
+		resetPassword = new ResetPasswordService(
+			fakeUsersRepository,
+			fakeUserTokensRepository,
+		);
+	})
+
+	it('should be able to reset the password', () => {
+		const user = await fakeUsersRepository.create({
+			name: 'Test example',
+			email: 'test@example.com',
+			password: '123456',
+		});
+
+		const generateHash = jest.spyOn(fakeHashProvider, 'generateHash');
+
+		const { token } = await fakeUserTokensRepository.generate(user.id);
+
+		await resetPassword.execute({
+			token,
+			password: '4444',
+		});
+
+		expect(user.password).toBe('4444');
+		expect(generateHash).toHaveBeenCalledWith('4444');
+	});
+
+	it('should not be able to reset the password with a non-existing user', () => {
+		const user = await fakeUsersRepository.create({
+			name: 'Test example',
+			email: 'test@example.com',
+			password: '123456',
+		});
+
+		const { token } = await fakeUserTokensRepository.generate('non-existing user');
+
+		await expect(resetPassword.execute({
+			token,
+			password: '4444',
+		})).rejects.toBeInstanceOf(AppError);
+	});
+
+	it('should not be able to reset the password with a non-existing token', () => {
+		await expect(resetPassword.execute({
+			token: 'non-existing-token',
+			password: '4444',
+		})).rejects.toBeInstanceOf(AppError);
+	});
+
+	it('should not be able to reset the password if passed more than 2 hours', () => {
+		const user = await fakeUsersRepository.create({
+			name: 'Test example',
+			email: 'test@example.com',
+			password: '123456',
+		});
+
+		jest.spyOn(Date, 'now').mockImplementationOnce(() => {
+			const customDate = new Date();
+
+			return customDate.setHours(customDate.getHours() + 3);
+		});
+
+		const { token } = await fakeUserTokensRepository.generate(user.id);
+
+		await expect(resetPassword.execute({
+			token,
+			password: '4444',
+		})).rejects.toBeInstanceOf(AppError);
+	})
+});
+
+```
+
+2. Gerar uma data quando um FakeUserToken for gerado;
+```typescript
+import { uuid } from 'uuidv4';
+
+import UserToken from '../../infra/typeorm/entities/UserToken';
+import IUserTokenRepository from '../IUserTokenRepository';
+
+class FakeUserTokensRepository implements IUserTokenRepository {
+
+	public async generate(user_id: string): Promise<UserToken> {
+		const userToken = new UserToken();
+
+		Object.assign(userToken, {
+			id: uuid(),
+			token: uuid(),
+			user_id,
+			created_at: new Date(),
+			updated_at: new Date(),
+		})
+
+		return userToken;
+	}
+
+}
+
+export default FakeUserTokensRepository;
+
+```
+
+3. Utilizar algumas funções do *date-fns* para verificar a data de criação do token;
+```typescript
+import { injectable, inject } from 'tsyringe';
+import { isAfter, addHours } from 'date-fns';
+
+import AppError from '@shared/errors/AppError';
+
+import IUsersRepository from '../repositories/IUsersRepository';
+import IUserTokensRepository from '../repositories/IUserTokensRepository';
+import IHashProvider from '../providers/HashProvider/models/IHashProvider';
+
+interface IRequest {
+	token: string;
+	password: string;
+}
+
+@injectable()
+class ResetPasswordService {
+
+	constructor(
+		@inject('UsersRepository')
+		private usersRepository: IUsersRepository,
+
+		@inject('UserTokensRepository')
+		private userTokensRepository: IUserTokensRepository,
+
+		@inject('HashProvider')
+		private hashProvider: IHashProvider,
+	)
+
+	public async execute({ token, password }: IRequest): Promise<void>{
+		const userToken = await this.userTokensRepository.findByToken(token);
+
+		if (!userToken) {
+			throw new AppError('User Token does not exists.');
+		}
+
+		const user = await this.usersRepository.findById(userToken.user_id);
+
+		if (!user) {
+			throw new AppError('User does not exists.');
+		}
+
+		const tokenCreateAt = userToken.created_at
+		const compareDate = addHours(tokenCreateAt, 2);
+
+		if (isAfter(Date.now(), compareDate)) {
+			throw new AppError('Token expired.');
+		}
+
+		user.password = await this.hashProvider.generateHash(password);
+
+		await this.usersRepository.save(user);
+	}
+}
+
+export default ResetPasswordService;
+
+```
+
+> addHours adiciona horas em alguma date especifica;
+> isAfter irá comparar se a data que o service foi executado é maior que a data que token foi criado somado a 2 horas. Se isso for verdade, quer dizer que a tokenCreatedAt+2(horas) passou do horário atual, ou seja, que o token expirou.
+
+[x] caso userToken inexistente
+[x] caso user inexistente
+[x] que o token expire em 2h
