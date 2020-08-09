@@ -2014,3 +2014,110 @@ describe('SendForgotPasswordEmail', () => {
 });
 
 ```
+## Reset de senha
+1. Criar o método *findByToken* na interface do UserTokens;
+
+```typescript
+import UserToken from '../infra/typeorm/entities/UserToken';
+
+export default interface IUserTokenRepository {
+	generate(user_id: string): Promise<UserToken>;
+	findByToken(token: string): Promise<UserToken | undefined>;
+}
+
+```
+
+2. Criar *ResetPasswordService.spec.ts.*;
+```typescript
+import FakeUsersRepository from '../repositories/fakes/FakeUsersRepository';
+import FakeUserTokensRepository from '../repositories/fakes/FakeUserTokensRepository';
+import FakeHashProvider from '../provider/HashProvider/fakes/FakeHashProvider';
+import ResetPasswordService from './ResetPasswordService';
+
+let fakeUsersRepository: FakeUsersRepository;
+let fakeUserTokensRepository: FakeUserTokensRepository;
+let resetPassword: ResetPasswordService;
+
+describe('ResetPassword', () => {
+	beforeEach(() => {
+		fakeUsersRepository = new FakeUsersRepository();
+		fakeUserTokensRepository = new FakeUserTokensRepository();
+		resetPassword = new ResetPasswordService(
+			fakeUsersRepository,
+			fakeUserTokensRepository,
+		);
+	})
+
+	it('should be able to reset the password', () => {
+		const user = await fakeUsersRepository.create({
+			name: 'Test example',
+			email: 'test@example.com',
+			password: '123456',
+		});
+
+		const generateHash = jest.spyOn(fakeHashProvider, 'generateHash');
+
+		const { token } = await fakeUserTokensRepository.generate(user.id);
+
+		await resetPassword.execute({
+			token,
+			password: '4444',
+		});
+
+		expect(user.password).toBe('4444');
+		expect(generateHash).toHaveBeenCalledWith('4444');
+	});
+});
+
+```
+
+3. Criar *ResetPasswordService.ts*;
+```typescript
+import { injectable, inject } from 'tsyringe';
+import AppError from '@shared/errors/AppError';
+
+import IUsersRepository from '../repositories/IUsersRepository';
+import IUserTokensRepository from '../repositories/IUserTokensRepository';
+import IHashProvider from '../providers/HashProvider/models/IHashProvider';
+
+interface IRequest {
+	token: string;
+	password: string;
+}
+
+@injectable()
+class ResetPasswordService {
+
+	constructor(
+		@inject('UsersRepository')
+		private usersRepository: IUsersRepository,
+
+		@inject('UserTokensRepository')
+		private userTokensRepository: IUserTokensRepository,
+
+		@inject('HashProvider')
+		private hashProvider: IHashProvider,
+	)
+
+	public async execute({ token, password }: IRequest): Promise<void>{
+		const userToken = await this.userTokensRepository.findByToken(token);
+
+		if (!userToken) {
+			throw new AppError('User Token does not exists.');
+		}
+
+		const user = await this.usersRepository.findById(userToken.user_id);
+
+		if (!user) {
+			throw new AppError('User does not exists.');
+		}
+
+		user.password = await this.hashProvider.generateHash(password);
+
+		await this.usersRepository.save(user);
+	}
+}
+
+export default ResetPasswordService;
+
+```
