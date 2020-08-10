@@ -2312,3 +2312,225 @@ export default ResetPasswordService;
 - [x] caso userToken inexistente
 - [x] caso user inexistente
 - [x] que o token expire em 2h
+
+## Salvando Tokens no Banco
+1. Criar Rotas e Controllers
+2. Criar o Repositório de Tokens(TypeORM)
+3. Criar a Migration para Criação de Token
+4. Injetar Dependência do Token
+5. Provider de envio de email(DEV)
+6. Testar tudo
+
+**Lembrando que os controllers de uma API Restful devem ter no máximo 5 métodos:**
+- index(listar todos)
+- show(listar apenas um)
+- create(criar)
+- update(atualizar)
+- delete(deletar)
+
+Começar criando as rotas(*password.routes.ts*) e controllers(*ForgotPasswordController.ts*, *ResetPasswordControler.ts*)
+
+```typescript
+// ForgotPasswordController.ts
+import { container } from 'tsyringe'
+
+import { Request, Response } from 'express';
+
+import ForgotPasswordEmailService from '@modules/users/services/ForgotPasswordEmailService';
+
+class ForgotPasswordController {
+	public async create(request: Request, response: Response): Promise<Response>{
+		const { email } = request.body;
+
+		const forgotPassword = container.resolve(ForgotPasswordEmailService);
+
+		await forgotPassword.execute({
+			email,
+		});
+
+		return response.status(204);
+	}
+}
+
+export default ForgotPasswordController
+
+```
+
+```typescript
+// ResetPasswordController.ts
+import { container } from 'tsyringe'
+
+import { Request, Response } from 'express';
+
+import ResetPasswordService from '@modules/users/services/ResetPasswordService';
+
+class ResetPasswordController {
+	public async create(request: Request, response: Response): Promise<Response>{
+		const { token, password } = request.body;
+
+		const resetPassword = container.resolve(ResetPasswordService);
+
+		await resetPassword.execute({
+			token,
+			password,
+		});
+
+		return response.status(400).json();
+	}
+}
+
+export default ResetPasswordController;
+
+```
+
+```typescript
+// password.routes.ts
+import { Router } from 'express';
+
+import ResetPasswordController from '../controllers/ResetPasswordController';
+import ForgotPasswordController from '../controllers/ForgotPasswordController';
+
+const passwordRouter = Router();
+const forgotPasswordController = new ForgotPasswordController();
+const resetPasswordController = new ResetPasswordController();
+
+passwordRouter.post('/reset', resetPasswordController.create);
+passwordRouter.post('/forgot',forgotPasswordController.create);
+
+export default passwordRouter;
+
+```
+
+Atualizar o index.ts das rotas
+
+```typescript
+// @shared/infra/http/routes/index.ts
+import { Router } from 'express';
+import appointmentsRouter from '@modules/appointments/infra/http/routes/appointments.routes';
+import usersRouter from '@modules/users/infra/http/routes/user.routes';
+import sessionsRouter from '@modules/users/infra/http/routes/sessions.routes';
+import passwordRouter from '@modules/users/infra/http/routes/password.routes';
+
+const routes = Router();
+
+routes.use('/appointments', appointmentsRouter);
+routes.use('/users', usersRouter);
+routes.use('/sessions', sessionsRouter);
+routes.use('/password', passwordRouter);
+
+export default routes;
+
+```
+
+Criar o repositório do typeorm *UserTokensRepository*
+
+```typescript
+// @modules/users/infra/typeorm/repositories/UserTokensRepository.ts
+import { Repository, getRepository } from 'typeorm';
+
+import UserToken from '../entities/UserToken';
+import IUserTokensRepository from '@modules/users/repositories/IUserTokensRepository';
+
+class UserTokensRepository implements IUserTokensRepository {
+	private ormRepository: Repository<UserToken>;
+
+	constructor(){
+		this.ormRepository = getRepository(UserToken);
+	}
+
+	public async findByToken(token: string): Promise <UserToken | undefined>{
+		const userToken = await this.ormRepository.findOne({ where: { token } });
+
+		return userToken;
+	}
+
+	public async generate(user_id: string): Promise<UserToken>{
+		const userToken = this.ormRepository.create({
+			user_id,
+		});
+
+		await this.ormRepository.save(userToken);
+
+		return userToken;
+	}
+}
+
+export default UserTokensRepository;
+
+```
+
+Criar a migration
+```bash
+$ yarn typeorm migration:create -n CreateUserTokens
+```
+Ir em *@shared/infra/typeorm/migrations/CreateUserTokens.ts*
+
+```typescript
+import { MigrationInterface, QueryRunner, Table } from 'typeorm';
+
+export default class CreateUserTokens1597089880963
+	implements MigrationInterface {
+	public async up(queryRunner: QueryRunner): Promise<void>{
+		await queryRunner.createTable(new Table({
+			name: 'user_tokens',
+			columns: [
+				{
+					name: 'id',
+					type: 'uuid',
+					isPrimary: true,
+					generatedStrategy: 'uuid',
+					default: 'uuid_generate_v4()',
+				},
+				{
+					name: 'token',
+					type: 'uuid',
+					generatedStrategy: 'uuid',
+					default: 'uuid_generate_v4()',
+				},
+				{
+					name: 'user_id',
+					type: 'uuid',
+				},
+				{
+					name: 'created_at',
+					type: 'timestamp',
+					default: 'now()',
+				},
+				{
+					name: 'updated_at',
+					type: 'timestamp',
+					default: 'now()',
+				},
+			],
+			foreignKeys: [
+				{
+					name: 'TokenUser',
+					referencedTableName: 'users',
+					referencedColumnNames: ['id'],
+					columnsName: ['user_id'],
+					onDelete: 'CASCADE',
+					onUpdate: 'CASCADE',
+				}
+			],
+		}))
+	}
+
+	public async down(queryRunner: QueryRunner): Promise<void>{
+		await queryRunner.dropTable('user_tokens');
+	}
+
+}
+
+```
+
+Ir no *@shared/container/index.ts* e adicionar
+```typescript
+import IUserTokensRepository from '@modules/users/repositories/IUserTokensRepository';
+import UserTokensRepository from '@modules/users/infra/typeorm/repositories/UserTokensRepository';
+
+container.registerSingleton<IUserTokensRepository>(
+	'UserTokensRepository',
+	UserTokensRepository,
+);
+
+```
