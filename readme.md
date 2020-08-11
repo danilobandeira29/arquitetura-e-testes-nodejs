@@ -1,3 +1,23 @@
+# 📝 Sobre
+Anotações que faço ao longo dos estudos sobre:
+- Arquitetura do Backend
+- DDD(Domain-Driven Design)
+- TDD(Test-Driven Development)
+- SOLID
+- Jest
+- MongoDB
+- Cache
+- Amazon SES
+
+# 🏆 Desafio
+- Anotar a forma que resolvo os problemas, traçando caminhos e afins.
+- Colocar em prática os conhecimentos que são adquiridos diariamente nos meus estudos.
+
+# 👀 Projetos nos quais estou aplicando esses conceitos
+Disponível em: [Backend GoBarber](https://github.com/danilobandeira29/backend-GoBarber)
+
+---
+
 # Arquitetura e Testes NodeJS
 - **NÃO** existe arquitetura/estrutura perfeita para todos os projetos.
 - Cabe a mim, como desenvolvedor, entender o que faz sentido utilizar no meu projeto.
