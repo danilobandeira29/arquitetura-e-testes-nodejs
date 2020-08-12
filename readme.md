@@ -2554,3 +2554,87 @@ container.registerSingleton<IUserTokensRepository>(
 );
 
 ```
+## Emails em desenvolvimento
+- Utilizar a lib EthrealMail
+1. Instalar o nodemailer
+```bash
+$ yarn add nodemailer
+
+$ yarn add @types/nodemailer -D
+```
+
+2. Criar a implementation do nodemailer na pasta MailProvider
+```typescript
+import nodemailer, { Transporter } from 'nodemailer';
+
+import IMailProvider from '../models/IMailProvider';
+
+class EtherealMailProvider implements {
+	private client: Transporter;
+
+	constructor(){
+		nodemailer.createTestAccount().then(account => {
+			 const transporter = nodemailer.createTransport({
+					host: account.smtp.host,
+					port: account.smtp.port,
+					secure: account.smtp.secure,
+					auth: {
+							user: account.user,
+							pass: account.pass,
+					},
+				});
+
+			this.client = transporter;
+
+		});
+	}
+
+	public async sendMail(to: string, body: string): Promise<void>{
+		const message = this.client.sendMail({
+        from: 'Team GoBarber <team@gobarber.com>',
+        to,
+        subject: 'Recovery password',
+        text: body,
+    });
+
+		console.log('Message sent: %s', message.messageId);
+		console.log('Preview URL: %s', nodemailer.getTestMessageUrl(message));
+
+	}
+
+}
+
+export default EtherealMailProvider;
+
+```
+3. Criar a injeção de dependência
+```typescript
+import { container } from 'tsyringe';
+
+import IMailProvider from './MailProvider/models/IMailProvider';
+import EtherealMailProvider from './MailProvider/implementations/EtherealMailProvider';
+
+container.registerInstance<IMailProvider>(
+	'MailProvider',
+	new EtherealMailProvider(),
+)
+
+```
+> Devo utilizar o *registerInstance*, pois com o *registerSingleton* não estava funcionando, pois ele não está instânciando o EtherealMailProvider como deveria acontecer.
+
+4. Pegar o token que é gerado no SendForgotPasswordEmail
+```typescript
+...
+		const { token } = await this.userTokensRepository.generate(user.id);
+
+		await this.mailProvider.sendMail(
+			email,
+			`Pedido de recuperação de senha: ${token}`,
+		);
+
+```
+- Testar a rota pelo insomnia
+- Receber o console.log com o token
+- Clicar no link, pegar o token enviado no corpo do email
+- Disparar o ResetPasswordService também pelo insomnia, passando o token e a nova password.
+
