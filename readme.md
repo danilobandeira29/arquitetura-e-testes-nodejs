@@ -2638,3 +2638,203 @@ container.registerInstance<IMailProvider>(
 - Clicar no link, pegar o token enviado no corpo do email
 - Disparar o ResetPasswordService também pelo insomnia, passando o token e a nova password.
 
+## Template de Emails
+- Devo utilizar uma template engine para isso, existem várias: Nunjuncks, Handlerbars...
+- Esse Template Email também será um provider.
+- Criar a pasta *MailTemplateProvider*, e dentro dela *models*, *implementations*, *fakes*, *dtos*;
+
+```typescript
+// dtos
+interface ITemplateVariables {
+	[key: string]: string | number;
+}
+
+export default interface IParseMailTemplateDTO {
+	template: string;
+	variables: ITemplateVariables;
+}
+
+```
+
+```typescript
+// models
+import IParseMailTemplateDTO from '../dtos/IParseMailTemplateDTO';
+
+export default interface IMailTemplateProvider {
+	parse(data: IParseMailTemplateDTO): Promise<string>;
+} 
+
+```
+
+```typescript
+// fakes
+import IMailTemplateProvider from '../models/IMailTemplateProvider';
+
+class FakeMailTemplateProvider implements IMailTemplateProvider {
+	public async parse({ template }: IMailTemplateProvider): Promise<string> {
+		return template;
+	}
+}
+
+export default FakeMailTemplateProvider;
+
+```
+
+- Fazer a instalação do handlerbars;
+
+```typescript
+// implementations
+import handlebars from handlebars
+
+import IMailTemplateProvider from '../models/IMailTemplateProvider';
+
+class HandlebarsMailTemplateProvider implements IMailTemplateProvider {
+	public async parse({ template, variables }: IMailTemplateProvider): Promise<string> {
+		const parseTemplate = handlebars.compile(template);
+
+		return parseTemplate(variables);
+	}
+}
+
+export default HandlebarsMailTemplateProvider;
+
+```
+
+- Criar a injeção de dependência
+```typescript
+import { container } from 'tsyringe';
+import IMailTemplateProvider from './MailTemplateProvider/models/IMailTemplateProvider';
+import HandlebarsMailTemplateProvider from './MailTemplateProvider/implementations/HandlebarsMailTemplateProvider';
+
+
+container.registerSingleton<IMailTemplateProvider>(
+	'MailTemplateProvider',
+	HandlebarsMailTemplateProvider
+);
+
+```
+**MailTemplateProvider** está diretamente associado ao **MailProvider**, pois o MailTemplateProvider nem existiria se não houvesse MailProvider, por isso, ele não será passado como injeção de dependência do service *SendForgotPasswordEmail*.
+
+- Devo criar uma DTO para o *MailProvider* já que agora sua interface irá receber mais coisas além do to e body
+```typescript
+// @shared/container/providers/MailProvider/dtos/ISendMailDTO
+import IParseMailTemplateDTO from '@shared/container/providers/MailTemplateProvider/dtos/IParseMailTemplateDTO';
+
+interface IMailContact {
+	name: string;
+	email: string;
+}
+
+export default interface ISendMailDTO {
+	to: IMailContact;
+	from?: IMailContact;
+	subject: string;
+	templateData: IParseMailTemplateDTO;
+}
+
+```
+- Agora devo alterar tanto o *fake* como o *implementations* do *MailProvider*;
+
+```typescript
+//fakes
+import IMailProvider from '../models/IMailProvider';
+import ISendMailDTO from '../dtos/ISendMailDTO';
+
+class FakeMailProvider implements IMailProvider {
+	private messages: ISendMailDTO[];
+
+	public async sendMail(message: ISendMailDTO): Promise<void>{
+		this.messages.push(message);
+	}
+}
+
+export default FakeMailProvider;
+
+```
+
+**Fazer a injeção de dependência do MailTemplateProvider no MailProvider**. Um provider pode depender do outros, pois o MailTemplateProvider só existe se o MailProvider também exister.
+
+```typescript
+import { container } from 'tsyringe';
+
+import IStorageProvider from './StorageProvider/models/IStorageProvider';
+import DiskStorageProvider from './StorageProvider/implementations/DiskStorageProvider';
+
+import IMailProvider from './MailProvider/models/IMailProvider';
+import EtherealMailProvider from './MailProvider/implementations/EtherealMailProvider';
+
+import IMailTemplateProvider from './MailTemplateProvider/models/IMailTemplateProvider';
+import HandlebarsMailTemplateProvider from './MailTemplateProvider/implementations/HandlebarsMailTemplateProvider';
+
+container.registerSingleton<IStorageProvider>(
+	'StorageProvider',
+	DiskStorageProvider,
+);
+
+container.registerSingleton<IMailTemplateProvider>(
+	'MailTemplateProvider',
+	HandlebarsMailTemplateProvider,
+);
+
+container.registerInstance<IMailProvider>(
+	'MailProvider',
+	container.resolve(EtherealMailProvider),
+);
+```
+
+- Ir no EtherealMailProvider e alterar a função sendMail, como foi feito no fake.
+
+```typescript
+import nodemailer, { Transporter } from 'nodemailer';
+import { injectable, inject } from 'tsyringe';
+
+import IMailProvider from '../models/IMailProvider';
+import ISendMailDTO from '../dtos/ISendMailDTO';
+import IMailTemplateProvider from '@shared/container/providers/MailTemplateProvider/models/IMailTemplateProvider';
+
+@injectable()
+class EtherealMailProvider implements IMailProvider {
+	private client: Transporter;
+
+	constructor(
+		@inject('MailTemplateProvider')
+		private mailTemplateProvider: IMailTemplateProvider,
+	) {
+		nodemailer.createTestAccount().then(account => {
+			const transporter = nodemailer.createTransport({
+				host: account.smtp.host,
+				port: account.smtp.port,
+				secure: account.smtp.secure,
+				auth: {
+					user: account.user,
+					pass: account.pass,
+				},
+			});
+
+			this.client = transporter;
+		});
+	}
+
+	public async sendMail({ to, from, subject, templateData }: ISendMailDTO): Promise<void> {
+		const message = await this.client.sendMail({
+			from: {
+				name: from?.name || 'Team GoBarber',
+				address: from?.email || 'team@gobarber.com.br',
+			},
+			to: {
+				name: to.name,
+				address: to.email,
+			},
+			subject,
+			html: await this.mailTemplateProvider.parse(templateData),
+		});
+
+		console.log('Message sent: %s', message.messageId);
+		console.log('Preview URL: %s', nodemailer.getTestMessageUrl(message));
+	}
+}
+
+export default EtherealMailProvider;
+
+```
+Executar nas rotas do insomnia o envio de forgot password email and reset password
