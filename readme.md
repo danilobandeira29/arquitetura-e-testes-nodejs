@@ -2838,3 +2838,100 @@ export default EtherealMailProvider;
 
 ```
 Executar nas rotas do insomnia o envio de forgot password email and reset password
+
+## Template Engine
+1. Ir em users, criar a pasta views e um arquivo que servirá de template para os emails de usuário.
+
+```handlebars
+<!--@modules/users/views/forgot_password.hbs-->
+<style>
+	.message-content {
+		font-family: Arial, Helvetica, sans-serif;
+		max-width: 600px;
+		font-size: 18px;
+		line-height: 21px;
+	}
+
+</style>
+
+<div class="message-content">
+	<p>Olá, {{name}}</p>
+	<p>Parece que uma troca de senha para sua conta foi solicitada.</p>
+	<p>Se foi você, então clique no link abaixo para escolher uma nova senha</p>
+	<p>
+		<a href="{{link}}">Recuperar senha</a>
+	</p>
+	<p>Se não foi você, então descarte esse email</p>
+	<p>
+		Obrigado </br>
+		<strong style="color: #FF9000">Team GoBarber</strong>
+	</p>
+</div>
+
+```
+
+2. Ir na interface *IParseMailTemplate* e editar o atributo template para file.
+3. Ir no *FakeMailTemplateProvider*.
+```typescript
+import IMailTemplateProvider from '../models/IMailTemplateProvider';
+
+class FakeTemplateMailProvider implements IMailTemplateProvider {
+	public async parse(): Promise<string> {
+		return 'Mail content';
+	}
+}
+
+export default FakeTemplateMailProvider;
+
+```
+4. Ir no *HandlebarsMailTemplateProvider.ts*
+
+```typescript
+import handlebars from 'handlebars';
+import fs from 'fs';
+
+import IParseMailTemplateDTO from '../dtos/IParseMailTemplateDTO';
+import IMailTemplateProvider from '../models/IMailTemplateProvider';
+
+class HandlebarsMailTemplateProvider implements IMailTemplateProvider {
+	public async parse({
+		file,
+		variables,
+	}: IParseMailTemplateDTO): Promise<string> {
+		const templateFileContent = await fs.promises.readFile(file, {
+			encoding: 'utf-8',
+		});
+
+		const parseTemplate = handlebars.compile(templateFileContent);
+
+		return parseTemplate(variables);
+	}
+}
+```
+
+5. Ir no *SendForgotPasswordMailService.ts*
+```typescript
+import path from 'path';
+
+const forgotPasswordTemplate = path.resolve(
+	__dirname,
+	'..',
+	'views',
+	'forgot_password.hbs',
+);
+
+await this.mailProvider.sendMail({
+	to: {
+		name: user.name,
+		email: user.email,
+	},
+	subject: '[GoBarber] Recuperação de Senha',
+	templateData: {
+		file: forgotPasswordTemplate,
+		variables: {
+			name: user.name,
+			link: `http://localhost:3000/reset_password?token=${token}`,
+		},
+	},
+
+```
