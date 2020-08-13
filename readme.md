@@ -2935,3 +2935,5 @@ await this.mailProvider.sendMail({
 	},
 
 ```
+## Refatoração dos testes
+- Fazer com que todos os testes utilizem a sintaxe *beforeEach(() => {})* para que fiquem menos verbosos.
