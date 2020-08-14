@@ -6187,3 +6187,127 @@ class UpdateProfileService {
 	}
 }
 ```
+## Rotas e Controller de profile
+
+1. Criar o *ShowProfileService.ts* e *ShowProfileService.spec.ts*
+```typescript
+// ShowProfileService.ts
+interface IRequest {
+	user_id: string;
+}
+
+class ShowProfileService {
+
+	constructor(
+		@inject('UsersRepository')
+		private usersRepository: IUsersRepository
+	){}
+
+	public async execute({ user_id }: IRequest): Promise<User>{
+		const user = await this.usersRepository.findById(user_id);
+
+		if(!user){
+			throw new AppError('User not found.');
+		}
+
+		return user;
+	}
+}
+
+export default ShowProfileService;
+```
+
+```typescript
+// ShowProfileService.spec.ts
+describe('ShowProfile', () => {
+	beforeEach(() => {
+		fakeUsersRepository = new FakeUsersRepository();
+		showProfile = new ShowProfileService(fakeUsersRepository);
+	}).
+
+	it('should be able to show the profile', async () => {
+		const user = await fakeUsersRepository.create({
+			name: 'Test example',
+			email: 'test@example.com',
+			password: '123456',
+		});
+
+		const profile = await showProfile.execute({ user_id: user.id });
+
+		expect(profile.name).toBe('Test example');
+		expect(profile.email).toBe('test@example.com');
+	});
+
+	it('should be able to show the profile from a non-existing user', async () => {
+		await expect(showProfile.execute({ user_id: user.id }))
+		.rejects
+		.toBeInstanceOf(AppError);
+	});
+
+
+})
+```
+
+2. Criar o *ProfileController.ts*
+
+```typescript
+class ProfileController {
+	public async show(request: Request, response: Response): Promise<Response>{
+		const { user_id } = request.user.id;
+
+		const showProfile = container.resolve(ShowProfileService);
+
+		const user = await showProfile.execute({ user_id });
+
+		return response.json(user);
+	}
+
+	public async update(request: Request, response: Response): Promise<Response>{
+		const { user_id } = request.user.id;
+
+		const { email, password, old_password, name } = request.body;
+
+		const updateProfile = container.resolve(UpdateProfileService);
+
+		const user = await updateProfileService.execute({
+			user_id,
+			email,
+			password,
+			old_password,
+			name
+		});
+
+		return response.json(user);
+	}
+}
+
+export default ProfileController;
+```
+
+3. Criar a *profile.routes.ts*.
+
+> Poderia ser utilizado o users.routes.ts, mas ele lida apenas com o UsersController, que por sua vez lida com os métodos de todos os usuários, não apenas o que estão autenticados.
+
+```typescript
+import { Router } from 'express';
+import ProfileController from '../controller/ProfileController';
+import ensureAuthenticated from '../middlewares/ensureAuthenticated';
+
+const profileRouter = Router();
+const profileController = new ProfileController();
+profileRouter.use(ensureAuthenticated);
+
+profileRouter.get('/', profileController.show);
+profileRouter.put('/', profileController.update);
+
+export default profileRouter;
+
+```
+
+4. Fazer a importação da nova rota no server
+
+```typescript
+...
+app.use('/profile', profileRouter);
+
+```
