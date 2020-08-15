@@ -6311,3 +6311,168 @@ export default profileRouter;
 app.use('/profile', profileRouter);
 
 ```
+
+## Listagem de Prestadores
+1. Irei criar um service para listar todos os providers
+```typescript
+// listProvidersService.ts
+
+interface IRequest {
+	user_id?: string;
+}
+
+class ListProvidersService {
+
+	constructor(
+		@inject('UsersRepository')
+		private usersRepository: IUsersRepository,
+	)
+
+	public async execute({ user_id }: IRequest): Promise<User[]>{
+		const users = await this.usersRepository.findAllProviders({
+			except_user_id: user_id,
+		});
+
+		return users;
+	}
+}
+```
+
+2. Criar esse novo método na interface de repositório e uma DTO para o método findAllProviders.
+
+> Ficará mais descritivo quando eu utilizar o service e passar como parametro para o atributo *expect_user_id* o *user_id* que estou recebendo da rota.
+
+```typescript
+export default interface IUsersRepository {
+	findAllProviders(data: IFindAllProviders): Promise<User[]>;
+	findById(id: string): Promise<User | undefined>;
+	findByEmail(email: string): Promise<User | undefined>;
+	create(data: ICreateUserDTO): Promise<User>;
+	save(user: User): Promise<User>;
+}
+
+```
+
+```typescript
+export default interface IFindAllProviders {
+	except_user_id?: string;
+}
+
+```
+
+3. Implementar o novo método no *FakeUsersRepository*
+
+```typescript
+
+class FakeUsersRepository implements IUsersRepository {
+	...
+
+	public async findAllProviders(except_user_id?: string): Promise<User[]>{
+		let { users } = this;
+
+		if (except_user_id) {
+			users = this.users.filter(user => user.id !== except_user_id);
+		}
+
+		return users;
+	}
+}
+
+```
+
+4. Implementar o novo método no repositório do TypeORM
+
+```typescript
+
+class UsersRepository implements IUsersRepository {
+	...
+
+	public async findAllProviders(except_user_id?: string): Promise<User[]> {
+		let users: User[];
+
+		if (except_user_id) {
+			users = await this.ormRepository.find({ 
+				where: {
+					id: Not(except_user_id),
+				} 
+			});
+		} else {
+			users = await this.ormRepostiry.find();
+		}
+
+		return users;
+	}
+}
+
+```
+
+5. Criar o teste para *ListProvidersService.ts*
+
+```typescript
+describe('ListProviders', () => {
+	beforeEach(() => {...});
+
+	it('should be able to list all providers', async () => {
+		const user1 = await fakeUsersRepository.create({
+			name: 'Test example',
+			email: 'test@example.com',
+			password: '123456',
+		});
+
+		const user2 = await fakeUsersRepository.create({
+			name: 'Test 2',
+			email: 'test2@example.com',
+			password: '123456',
+		});
+
+		const loggedUser = await fakeUsersRepository.create({
+			name: 'John Doe',
+			email: 'john@doe.com',
+			password: '123456',
+		});
+
+		const providers = await this.listProviders.execute({
+			user_id: loggedUser.id,
+		});
+
+		expect(providers).toBe([
+			user1,
+			user2,
+		]);
+	});
+})
+
+```
+
+> Em casos simples como listagem ou algo que não envolva uma regra de negócio, o TDD não precisa ser necessariamente feito antes da funcionalidade!!
+
+6. Criar ProvidersController.ts
+
+```typescript
+class ProvidersControllers {
+	public async index(request: Request, response: Response): Promise<Response>{
+		const user_id = request.user.id;
+
+		const listProviders = container.resolve(ListProvidersService);
+
+		const providers = await listProviders.execute({ user_id });
+
+		return response.json(providers);
+	}
+}
+
+```
+
+7. Cria ProvidersRouter
+
+```typescript
+const providersRouter = Router();
+const providersController = new ProvidersController();
+
+providersRouter.use(ensureAuthenticated);
+providersRouter.get('/', providersControllers.index);
+
+export default providersRouter;
+```
+
+8. Ir no *index.ts* do *@shared/infra/http/routes/index.ts* e fazer a importação do providersRouter
