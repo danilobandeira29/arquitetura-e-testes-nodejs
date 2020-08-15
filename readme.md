@@ -4547,11 +4547,11 @@ Feito em Engenharia de Software.
 - O usuário deve confirmar a senha ao resetar a senha.
 
 #### **Atualização do Perfil**
-**Requistos Funcionais**
+**Requisitos Funcionais**
 
 - O usuário deve poder atualizar seu nome, email e senha.
 
-<s>**Requistos Não-Funcionais**</s>
+<s>**Requisitos Não-Funcionais**</s>
 
 **Regras de Negócio**
 
@@ -4560,13 +4560,13 @@ Feito em Engenharia de Software.
 - O usuário ao alterar a senha, deve confirmar a nova senha.
 
 #### Painel do Prestador
-**Requistos Funcionais**
+**Requisitos Funcionais**
 
 - O usuário deve poder exibir os agendamentos de um dia específico.
 - O prestador deve receber um notificação sempre que houver um novo agendamento.
 - O prestador deve poder visualizar as notificações não lidas.
 
-**Requistos Não-Funcionais**
+**Requisitos Não-Funcionais**
 
 - Os agendamentos do prestador no dia devem ser armazenados em cache.
 > Pois é possível que o prestador fique recarregando a página muitas vezes ao longo do dia. Logo, o cache será limpo e armazenado apenas quando tiver um novo agendamento.
@@ -4579,14 +4579,14 @@ Feito em Engenharia de Software.
 - A notificação deve ter um status de lida ou não-lida para que o prestador possa controlar. 
 
 #### Agendamento de Serviço
-**Requistos Funcionais**
+**Requisitos Funcionais**
 
 - O usuário deve poder listar todos os prestadores de serviço cadastrados.
 - O usuário deve poder listar dias de um mês com pelo menos um horário disponível pelo prestador.
 - O usuário deve poder listar horários disponíveis em um dia específico de um prestador.
 - O usuário deve poder realizar um novo agendamento com o prestador.
 
-**Requistos Não-Funcionais**
+**Requisitos Não-Funcionais**
 
 - A listagem de prestadores deve ser armazenada em cache.
 > Dessa forma, irá **evitar** gasto de processamento da máquina.
@@ -6476,3 +6476,188 @@ export default providersRouter;
 ```
 
 8. Ir no *index.ts* do *@shared/infra/http/routes/index.ts* e fazer a importação do providersRouter
+
+## Filtrando agendamentos por mês
+1. Irei criar um novo service para isso, chamado *ListProviderMonthAvailability.ts*
+```typescript
+
+interface IRequest { 
+	provider_id: string;
+	year: number;
+	month: number;
+}
+
+class ListProviderMonthAvailability {
+
+	constructor(
+		@inject('AppointmentsRepository')
+		private appointmentsRepository: IAppointmentsRepository
+	)
+
+	public async execute({ provider_id, year, month }: IRequest): Promise<void>{
+		const appointments = await this.appointmentsRepository.find(????)
+	}
+}
+
+export default ListProviderMonthAvailability;
+
+```
+
+**Ainda não existe o método na interface do Repositório para listar todos os agendamentos de um provider em um mês específico**
+
+2. Criar o método *findAllInMonthFromProvider* e uma dto
+
+
+```typescript
+import { getMonth, getYear } from 'date-fns'; 
+
+export default interface IFindAllInMonthFromProviderDTO {
+	provider_id: string;
+	year: number;
+	month: number;
+}
+
+```
+
+```typescript
+class FakeAppointmentsRepository implements IAppointmentsRepository {
+	...
+	public async findAllInMonthFromProvider({ 
+		provider_id,
+		year,
+		month
+	}: IFindAllInMonthFromProviderDTO): Promise<Appointment[]>{
+		const appointments = this.appointments.filter( appointment => 
+			appointment.provider_id === provider_id &&
+			getYear(appointment.date) === year &&
+			getMonth(appointment.date) + 1 === month,
+		)
+
+		return appointments;
+	}
+}
+
+```
+
+> getMonth(appointment.date) + 1 pois o getMonth faz a contagem dos meses começando do 0. Ou seja, 0 = janeiro, 1 = fevereiro...
+
+3. Ir criar o novo método da interface no repositório do TypeORM.
+
+```typescript
+class AppointmentsRepository implements IAppointmentsRepository {
+	...
+	public async findAllInMonthFromProvider({ 
+		provider_id,
+		year,
+		month
+	}: IFindAllInMonthFromProviderDTO): Promise<Appointments[]>{
+
+		const parsedMonth = month.toString().padStart(2, '0');
+
+		const appointments = await this.ormRepository.find({
+			where: {
+				provider_id,
+				date: Raw( dateFieldName => 
+					`to_char(${dateFieldName}, 'MM-YYYY') = '${parsedMonth}-${year}'`
+				)
+			}
+		})
+
+		return appointments;
+	}
+}
+
+```
+
+> Raw é uma forma de escreve query sql no typeorm. Isso fará com que o ORM nem tente converter/interpretar aquela query. Pode receber uma função ou apenas a query. Quando é passado uma função e eu quero receber o nome daquela coluna verdadeiro(pois o TypeORM altera o nome das colunas e coloca um apelido/alias), eu passei o parametro dateFielName
+> to_char(valor_que_quero_converter, formato_que_quero) converte um valor em string. Basta procurar na documentação.
+> Quando to_char converte para MM, ele adiciona o 0 na frente do valor caso ele tenha apenas uma casa decimal. Exemplo: 01 = Janeiro, 10 = Outubro.
+> Entao, eu devo pegar o mês, converter em string e caso ele não tenha 2 de tamanho, eu irie adicionar '0' no começo dele, utilizando o padStart(2, '0') 
+
+4. Criar o teste e atualizar o service
+
+```typescript
+
+describe('ListProviderMonthAvailability', () => {
+	beforeEach(() => {
+		fakeAppointmentsRepository = new FakeAppointmentsRepository();
+		listProviderMonthAvailability = new ListProviderMonthAvailability(
+			fakeAppointmentsRepository,
+		);
+	});
+
+	it('should be able to list provider availability in month', () => {
+		await fakeAppointmentsRepository.create({
+			provider_id: 'provider-id',
+			date: new Date(2020, 8, 15, 17, 0, 0),
+		});
+		await fakeAppointmentsRepository.create({
+			provider_id: 'provider-id',
+			date: new Date(2020, 8, 15, 10, 0, 0),
+		});
+		await fakeAppointmentsRepository.create({
+			provider_id: 'provider-id',
+			date: new Date(2020, 8, 16, 9, 0, 0),
+		});
+
+		const availability = await listProviderMonthAvailability.execute({
+			provider_id: 'provider-id',
+			month: 9,
+			year: 2020,
+		});
+
+		expect(availability).toEqual(expect.arrayContaining([
+			{
+				day: 14,
+				available: true, 
+			},
+			{
+				day: 15,
+				available: false, 
+			},
+			{
+				day: 16,
+				available: false, 
+			},
+			{
+				day: 17,
+				available: true, 
+			},
+		]))
+	})
+})
+
+```
+
+5. Refatorar o Service
+```typescript
+
+interface IRequest { 
+	provider_id: string;
+	year: number;
+	month: number;
+}
+
+class ListProviderMonthAvailability {
+
+	constructor(
+		@inject('AppointmentsRepository')
+		private appointmentsRepository: IAppointmentsRepository
+	)
+
+	public async execute({ provider_id, year, month }: IRequest): Promise<void>{
+		const appointments = await this.appointmentsRepository.findAllInMonthFromProvider({
+			provider_id,
+			year,
+			month,
+		});
+
+		console.log(appointments);
+
+		return [ { day: 1, available: false }];
+	}
+}
+
+export default ListProviderMonthAvailability;
+
+```
