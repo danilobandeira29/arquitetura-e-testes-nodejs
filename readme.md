@@ -6661,3 +6661,60 @@ class ListProviderMonthAvailability {
 export default ListProviderMonthAvailability;
 
 ```
+
+## Listando dias disponíveis
+1. Ir no *ListProviderMonthAvailabilityService.ts*
+
+```typescript
+
+import { getDate, getDaysInMonth } from 'date-fns';
+
+interface IRequest { 
+	provider_id: string;
+	year: number;
+	month: number;
+}
+
+class ListProviderMonthAvailability {
+
+	constructor(
+		@inject('AppointmentsRepository')
+		private appointmentsRepository: IAppointmentsRepository
+	)
+
+	public async execute({ provider_id, year, month }: IRequest): Promise<void>{
+		const appointments = await this.appointmentsRepository.findAllInMonthFromProvider({
+			provider_id,
+			year,
+			month,
+		});
+
+		const numberOfDaysInMonth = getDaysInMonth(new Date(year, month - 1));
+
+		const eachDayArray = Array.from(
+			{ length: numberOfDaysInMonth },
+			(_, index) => index + 1,  
+		);
+
+		const availability = eachDayArray.map(day => {
+			const appointmentsInDay = appointments.filter(appointment => 
+				getDay(appointment.date) === day
+			);
+
+			return {
+				day,
+				available: appointmentsInDay.length < 10,
+			};			
+		})
+
+		return availability;
+	}
+}
+
+export default ListProviderMonthAvailability;
+
+```
+
+> Array.from() cria um array à partir de algumas opções. Como primeiro parâmetro, recebe um objeto onde possuí como atributo o length. O segundo parâmetro é uma função que contém (value, index).
+
+2. Ir nos testes e adicionar appointments das 8 às 17h de um mesmo dia.
