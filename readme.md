@@ -6718,3 +6718,159 @@ export default ListProviderMonthAvailability;
 > Array.from() cria um array à partir de algumas opções. Como primeiro parâmetro, recebe um objeto onde possuí como atributo o length. O segundo parâmetro é uma função que contém (value, index).
 
 2. Ir nos testes e adicionar appointments das 8 às 17h de um mesmo dia.
+
+## Listando horários disponíveis
+1. Criar DTO para o novo método da interface
+```typescript
+export default interface IFindAllInDayFromProviderDTO {
+	provider_id: string;
+	year: number;
+	month: number;
+	day: number;
+
+}
+
+```
+
+2. Criar o método na interface findAllInDayFromProvider
+```typescript
+export default interface IAppointmentsRepository {
+	...
+	findALlInDayFromProvider(data: IFindAllInDayFromProviderDTO): Promise<Appointment[]>;
+}
+
+```
+
+3. Criar esses métodos no repositório fake e TypeORM
+```typescript
+class FakeAppointmentsRepository{
+public async findAllInDayFromProvider({ 
+	provider_id,
+	year,
+	month,
+	day
+ }: IFindAllInDayFromProviderDTO): Promise<Appointment[]> {
+	 const appointmentsInDay = this.appointments.filter(appointment =>
+	 	appointment.provider_id === provider_id &&
+	 	getDate(appointment.date) === day &&
+	 	getYear(appointment.date) === year &&
+	 	getMonth(appointment.date) + 1 === month &&,
+	 )
+
+	 return appointmentsInDay;
+ }
+}
+export default FakeAppointmentsRepository;
+
+```
+
+```typescript
+class AppointmentsRepository {
+	public async findAllInDayFromProvider({ 
+	provider_id,
+	year,
+	month,
+	day
+ }: IFindAllInDayFromProviderDTO): Promise<Appointment[]> {
+	 const parsedDay = day.toString().padStart(2, '0');
+	 const parsedMonth = month.toString().padStart(2, '0');
+
+	 const appointments = await this.ormRepository.find({
+		 where: { provider_id,
+		 date: Raw(dateFieldName =>
+		 `to_char(${dateFieldName}, 'DD-MM-YYYY') = '${parsedDay}-${parsedMonth}-${year}'`
+		 ),
+		},
+	 });
+
+	return appointments;
+ }
+}
+```
+
+4. Criar o service *ListProviderDayAvailabilityService.ts* e *ListProviderDayAvailabilityService.spec.ts*
+```typescript
+class ListProviderDayAvailabilityService {
+	public async execute({ 
+		provider_id,
+		year,
+		month,
+		day,
+	}: IFindAllInDayFromProvider): Promise<Appointemnt[]>{
+		const appointmentsInDay = await this.appointmentsRepository.findAllInDayFromProvider({
+			provider_id,
+			year,
+			month,
+			day,
+		});
+
+		const hourStart = 8;
+
+		const eachHour = Array.from(
+			{ length: 10 },
+			(_, index) => index + 8),
+		);
+
+		const availability = eachHour(hour => {
+			const hasAppointmentInHour = appointments.find(appointment =>
+				getHours(new Date(appointment.date)) === hour;
+			);
+
+			return {
+				hour,
+				available: !hasAppoinmentInHour,
+			};
+		});
+
+		return availability;
+	}
+}
+
+export default ListProviderDayAvailabilityService;
+
+```
+```typescript
+describe('ListProviderDayAvailability', () => {
+	beforeEach('', () =>);
+
+	it('should be able to list day availability of a provider', () => {
+		await fakeAppointmentsRepository.create({
+			provider_id: 'provider-id',
+			date: new Date(2020, 7, 16, 9, 0, 0),
+		});
+
+		await fakeAppointmentsRepository.create({
+			provider_id: 'provider-id',
+			date: new Date(2020, 7, 16, 10, 0, 0),
+		});
+
+		const availability = await listProviderDayAvailability.execute({
+			provider_id: 'provider-id',
+			year: 2020,
+			month: 8,
+			day: 16,
+		});
+
+		expect(availability).toEqual(expect.arrayContaining([{
+			{
+				hour: 8,
+				available: true,
+			},
+			{
+				hour: 9,
+				available: false,
+			},
+			{
+				hour: 10,
+				available: false,
+			},
+			{
+				hour: 11,
+				available: true,
+			},
+		}])
+		);
+
+	});
+})
+```
