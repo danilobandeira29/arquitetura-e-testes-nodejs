@@ -6874,3 +6874,110 @@ describe('ListProviderDayAvailability', () => {
 	});
 })
 ```
+
+## Excluindo horários antigos
+> Quando for trabalhar para pegar a hora atual, utilizar o *new Date(Date.now())*, pois fica mais fácil aplicar um mock(como utilizado no test reset de senha) e alterar a data conforme necessário.
+
+1. Refatorar o *ListProviderDayAvailabilityService* para que seja possível mostrar se um dia está **disponível apenas se a data que o agendamento será marcado é depois da data que o agendamento está sendo feito**.
+
+```typescript
+class ListProviderDayAvailabilityService {
+	public async execute({ 
+		provider_id,
+		year,
+		month,
+		day,
+	}: IFindAllInDayFromProvider): Promise<Appointemnt[]>{
+		const appointmentsInDay = await this.appointmentsRepository.findAllInDayFromProvider({
+			provider_id,
+			year,
+			month,
+			day,
+		});
+
+		const hourStart = 8;
+
+		const eachHour = Array.from(
+			{ length: 10 },
+			(_, index) => index + 8),
+		);
+
+		const currentDate = new Date(Date.now());
+
+		const availability = eachHour(hour => {
+			const hasAppointmentInHour = appointments.find(appointment =>
+				getHours(new Date(appointment.date)) === hour;
+			);
+
+			const compareDate = new Date(year, month - 1, day, hour);
+
+			return {
+				hour,
+				available: !hasAppoinmentInHour && isAfter(compareDate, currentDate),
+			};
+		});
+
+		return availability;
+	}
+}
+
+export default ListProviderDayAvailabilityService;
+
+```
+
+2. Refatorar o test *ListProviderDayAvailabilityService.spec.ts*
+
+```typescript
+it('should be able to list the day availability of a provider', async () => {
+		await fakeAppointmentsRepository.create({
+			provider_id: 'provider-id',
+			date: new Date(2020, 7, 16, 9, 0, 0),
+		});
+
+		await fakeAppointmentsRepository.create({
+			provider_id: 'provider-id',
+			date: new Date(2020, 7, 16, 11, 0, 0),
+		});
+
+		
+		jest.spyOn(Date, 'now').mockImplementationOnce(() => {
+			return new Date(2020, 7, 16, 10).getTime();
+		})
+
+		const availability = await listProviderDayAvailability.execute({
+			provider_id: 'provider-id',
+			month: 8,
+			year: 2020,
+			day: 16,
+		});
+
+		expect(availability).toEqual(
+			expect.arrayContaining([
+				{
+					hour: 8,
+					available: false,
+				},
+				{
+					hour: 9,
+					available: false,
+				},
+				{
+					hour: 10,
+					available: false,
+				},
+				{
+					hour: 11,
+					available: false,
+				},
+				{
+					hour: 16,
+					available: true,
+				},
+				{
+					hour: 17,
+					available: true,
+				},
+			]),
+		);
+	});
+```
