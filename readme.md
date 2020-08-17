@@ -6981,3 +6981,109 @@ it('should be able to list the day availability of a provider', async () => {
 		);
 	});
 ```
+## Criação do agendamento
+> Deve ser refatorada, pois na criação de agendamento o usuário consegue marcar agendamento com ele mesmo.
+
+1. Criar migration para adicionar uma nova coluna no banco e criar chave estrangeira.
+```bash
+$ yarn typeorm migration:create -n AddUserIdToAppointments
+
+```
+```typescript
+import {
+	MigrationInterface,
+	QueryRunner,
+	TableColumn,
+	TableForeignKey,
+} from 'typeorm';
+
+export default class AddUserIdToAppointments
+	implements MigrationInterface {
+	public async up(queryRunner: QueryRunner): Promise<void> {
+		await queryRunner.addColumn('appointments',
+		new TableColumn({
+			name: 'user_id',
+			type: 'uuid',
+			isNullable: true,
+		}),
+		);
+
+		await queryRunner.addForeignKey('appointments',
+			new TableForeignKey({
+				name: 'ApppointmentUser',
+				columnNames: ['user_id'],
+				referencedColumnNames: ['id'],
+				referencedTableName: 'users',
+				onDelete: 'SET NULL',
+				onUpdate: 'CASCADE',
+			}),
+		);
+	}
+
+	public async down(queryRunner: QueryRunner): Promise<void> {
+		await queryRunner.dropForeignKey('appointments', 'AppointmentUser');
+
+		await queryRunner.dropColumn('appointments', 'user_id');
+	}
+}
+
+```
+
+2. Ir na entidade Appointments e fazer o mapeamento dessa nova coluna
+
+```typescript
+import {
+	Entity,
+	Column,
+	PrimaryGeneratedColumn,
+	CreateDateColumn,
+	UpdateDateColumn,
+	ManyToOne,
+	JoinColumn,
+} from 'typeorm';
+import User from '@modules/users/infra/typeorm/entities/User';
+
+@Entity('appointments')
+class Appointment {
+	@PrimaryGeneratedColumn('uuid')
+	id: string;
+
+	@Column()
+	provider_id: string;
+
+	@ManyToOne(() => User)
+	@JoinColumn({ name: 'provider_id' })
+	provider: User;
+
+	// fazer o mapeamento da nova coluna criada no banco user_id
+	// será convertido em uma coluna no banco de dados
+	@Column()
+	user_id: string;
+
+	
+	// relacionamento que existe apenas aqui no javascript, mas não no banco
+	// vários agendamentos para um usuário
+	@ManyToOne(() => User)
+
+	// qual coluna nessa tabela faz o relacionamento
+	@JoinColumn({ name: 'user_id' })
+	user: User;
+
+	@Column('timestamp with time zone')
+	date: Date;
+
+	@CreateDateColumn()
+	created_at: Date;
+
+	@UpdateDateColumn()
+	updated_at: Date;
+}
+
+export default Appointment;
+
+```
+
+3. Refatorar a interface de repositório
+4. Refatorar o repositório fake e do typeorm
+5. Ir no controller de *AppointmentController.create* e pegar do request.user.id o user_id para que seja possível passar como parâmetro para criação de um novo agendamento.
+6. Atualizar os testes para receberem esse novo parâmetro.
