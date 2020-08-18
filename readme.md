@@ -7087,3 +7087,120 @@ export default Appointment;
 4. Refatorar o repositório fake e do typeorm
 5. Ir no controller de *AppointmentController.create* e pegar do request.user.id o user_id para que seja possível passar como parâmetro para criação de um novo agendamento.
 6. Atualizar os testes para receberem esse novo parâmetro.
+
+## Regras de agendamento
+1. Criar novos testes:
+
+	- should not be able to create an appointment in past date
+		```typescript
+		jest
+			.spyOn(Date, 'now')
+			.mockImplementationOnce(() => new Date(2020, 7, 15, 10).getTime());
+
+		await expect(
+			createAppointment.execute({
+				provider_id: 'provider-id',
+				user_id: 'user-id',
+				date: new Date(2020, 7, 15, 9),
+			}),
+		).rejects.toBeInstanceOf(AppError);
+		```
+	- should not be able to create an appointment with same provider as user
+		```typescript
+		jest
+			.spyOn(Date, 'now')
+			.mockImplementationOnce(() => new Date(2020, 7, 15, 10).getTime());
+
+		await expect(
+			createAppointment.execute({
+				provider_id: 'provider-id',
+				user_id: 'provider-id',
+				date: new Date(2020, 7, 15, 11),
+			}),
+		).rejects.toBeInstanceOf(AppError);
+		```
+	- should not be able to create an appointment before 8am and after 5pm
+		```typescript
+		jest
+			.spyOn(Date, 'now')
+			.mockImplementationOnce(() => new Date(2020, 7, 15, 10).getTime());
+
+		await expect(
+			createAppointment.execute({
+				provider_id: 'provider-id',
+				user_id: 'user-id',
+				date: new Date(2020, 7, 15, 7),
+			}),
+		).rejects.toBeInstanceOf(AppError);
+		await expect(
+			createAppointment.execute({
+				provider_id: 'provider-id',
+				user_id: 'user-id',
+				date: new Date(2020, 7, 15, 18),
+			}),
+		).rejects.toBeInstanceOf(AppError);
+	});
+		```
+
+2. Ajustar *CreateAppointmentService* para esses testes
+```typescript
+import { startOfHour, isBefore, getHours } from 'date-fns';
+import { injectable, inject } from 'tsyringe';
+
+import Appointment from '@modules/appointments/infra/typeorm/entities/Appointment';
+import AppError from '@shared/errors/AppError';
+import IAppointmentsRepository from '../repositories/IAppointmentsRepository';
+
+interface IRequest {
+	provider_id: string;
+	user_id: string;
+	date: Date;
+}
+
+@injectable()
+class CreateAppointmentService {
+	constructor(
+		@inject('AppointmentsRepository')
+		private appointmentsRepository: IAppointmentsRepository,
+	) {}
+
+	public async execute({
+		provider_id,
+		date,
+		user_id,
+	}: IRequest): Promise<Appointment> {
+		const appointmentDate = startOfHour(date);
+
+		if (isBefore(appointmentDate, Date.now())) {
+			throw new AppError("You can't create an appointment on a past date.");
+		}
+
+		if(provider_id === user_id) {
+			throw new AppError("You can't create an appointment with yourself.");
+		}
+
+		if (getHours(appointmentDate) < 8 || getHours(appointmentDate) > 17 ) {
+			throw new AppError('You can only create an appointment between 8am and 5pm.');
+		}
+
+		const findAppointmentInSameDate = await this.appointmentsRepository.findByDate(
+			appointmentDate,
+		);
+
+		if (findAppointmentInSameDate) {
+			throw new AppError('This Appointment is already booked!');
+		}
+
+		const appointment = await this.appointmentsRepository.create({
+			provider_id,
+			user_id,
+			date: appointmentDate,
+		});
+
+		return appointment;
+	}
+}
+
+export default CreateAppointmentService;
+
+```
