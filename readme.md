@@ -7204,3 +7204,67 @@ class CreateAppointmentService {
 export default CreateAppointmentService;
 
 ```
+
+## Rotas e Controllers
+**Quem deve terminar se as regras de negócio estão funcionando são os testes**
+
+1. Criar *ProviderDayAvailabilityController.rs*, *ProviderMonthAvailabilityController.ts*
+```typescript
+import { Request, Response } from 'express';
+import { container } from 'tsyringe';
+
+import ListProviderDayAvailabilityService from '@modules/appointments/services/ListProviderDayAvailabilityService';
+
+class ProviderDayAvailabilityController {
+	public async index(request: Request, response: Response): Promise<Response> {
+		const { provider_id } = request.params;
+		const { year, month, day } = request.body;
+
+		const listProviderDayAvailability = container.resolve(ListProviderDayAvailabilityService);
+
+		const availability = await listProviderDayAvailabilityService.execute({
+			provider_id,
+			year,
+			month,
+			day,
+		});
+
+		return response.json(availability);
+	}
+}
+
+export default ProviderDayAvailabilityController;
+
+```
+
+2. Criar a rota em *provider.routes.ts.*
+
+```typescript
+import { Router } from 'express';
+
+import ensureAuthenticated from '@modules/users/infra/http/middlewares/ensureAuthenticated';
+import ProvidersController from '../controllers/ProvidersController';
+import ProviderDayAvailabilityController from '../controllers/ProviderDayAvailabilityController';
+import ProviderMonthAvailabilityController from '../controllers/ProviderMonthAvailabilityController';
+
+const providersRouter = Router();
+const providersController = new ProvidersController();
+const providersDayAvailabilityController = new ProviderDayAvailabilityController();
+const providersMonthAvailabilityController = new ProviderMonthAvailabilityController();
+
+providersRouter.use(ensureAuthenticated);
+
+providersRouter.get('/', providersController.index);
+providersRouter.get(
+	'/:provider_id/day-availability',
+	providersDayAvailabilityController.index,
+);
+providersRouter.get(
+	'/:provider_id/month-availability',
+	providersMonthAvailabilityController.index,
+);
+
+export default providersRouter;
+
+```
+3. Testar no insomnia
