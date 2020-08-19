@@ -7385,3 +7385,45 @@ appointmentsRouter.get('/me', providerAppointmentsController.index);
 export default appointmentsRouter;
 
 ```
+
+## MongoDB
+**Por que e quando utilizar o MongoDB?**
+- Um banco relacional o desenvolvedor possuí mais controle pois utiliza tabelas, relacionamentos, migrations(controle de versionamento) e afins.
+- Não possuí migration, logo, caso eu queira fazer uma alteração em registros anteriores, terei que fazer outra abordagem, algo manual.
+- O **MongoDB** é **utilizado quando possuímos uma larga escala de dados(dados entrando e sendo atualizados) e poucos relacionamentos entre esses dados, e quando esses dados não tem tanta responsabilidade na aplicação**. Apesar disso, posso utilizar relacionamentos complexos.
+
+Por exemplo, na Rocketseat é utilizado PostgreSQL para armazenar dados sobre:
+- Alunos
+- Vídeos
+- Cursos...
+E tem o progresso do Aluno:
+- Aluno assistiu 10% do vídeo X
+- Aluno assistiu 40% do vídeo Y
+**Isso é feito em real time e acontece muitas vezes: a anotação do progresso que faço no vídeo**
+
+Ou seja, é utilizado quando quero:
+- Gerar dados para relatórios
+- Utilizar dados em alguma API
+- Notificações
+
+> Por exemplo, no caso das notificações, eu não preciso guardar o ID de um tópico, posso simplesmente armazenar o nome do tópico. **Se preciso relacionar algo com o tópico, basta eu passar o nome do tópico ao invés de uma chave ou algo do tipo.**
+### **Ao utilizar MongoDB, os dados devem estar o menos relacionado possível com as Entidades**
+**Devemos salvar os dados brutos**
+
+### Usarei o Redis também para informações tempórarias como Cache, Filas...
+
+**Instalando o MongoDB**
+
+- Baixar do site se não estiver utilizando o Docker.
+- Caso esteja utilizando, executar o comando:
+```bash
+$docker run --name mongodb -p 27017:27017 -d -t mongo
+```
+**Interface Gráfica para MongoDB**
+- MongoDB Compass Community
+
+**Conectar com o banco**
+- Ir no Compass e passar o endereço
+```bash
+mongodb://localhost:27017
+```
