@@ -7268,3 +7268,120 @@ export default providersRouter;
 
 ```
 3. Testar no insomnia
+
+## Agenda do Prestador
+1. Criar o service para a listagem dos agendamentos de um prestador *ListProviderAppointmentsService.ts* e os testes *ListProviderAppointmentsService.spect.ts*.
+```typescript
+class ListProviderAppointmentService {
+
+	constructor(
+		@inject('AppointmentsRepository')
+		private appointmentsRepository: IAppointmentsRepository,
+	){}
+
+	public async execute({
+		provider_id,
+		year,
+		month,
+		day,
+	}: IRequest): Promise<Appointment[]>{
+		const appointments = await this.appointmentsRepository.findAllInDayFromProvider({
+			provider_id,
+			year,
+			month,
+			day
+		});
+
+		return appointments;
+	}
+}
+
+export default ListProviderAppointmentsService;
+
+```
+
+```typescript
+describe('ListProviderAppointments', () => {
+	beforeEach(()=>{});
+
+	it('should be able to list the appointments on a specific day', () => {
+		const appointment1 = await fakeAppointmentsRepository.create({
+			provider_id: 'provider-id',
+			user_id: 'user-id',
+			date: new Date(2020, 8, 18, 10),
+		});
+		const appointment2 = await fakeAppointmentsRepository.create({
+			provider_id: 'provider-id',
+			user_id: 'user-id',
+			date: new Date(2020, 8, 18, 11),
+		});
+		const appointment3 = await fakeAppointmentsRepository.create({
+			provider_id: 'provider-id',
+			user_id: 'user-id',
+			date: new Date(2020, 8, 18, 12),
+		});
+
+		const appointments = await listProviderAppointments.execute({
+			provider_id: 'provider-id',
+			year: 2020,
+			month: 9,
+			day: 18,
+		});
+
+		expect(appointments).toEqual([
+			appointments1,
+			appointments2,
+			appointments3,
+		]);
+	});
+})
+
+```
+2. Criar *ProviderAppointmentsController.ts*
+```typescript
+class ProviderAppointmentsController {
+	public async index(request: Request, response: Response): Promise<Response>{
+		const provider_id = request.user.id;
+		const { year, month, day } = request.body;
+
+		const listProviderAppointments = container.resolve(
+			ListProviderAppointmentsService
+		);
+
+		const appointments = await listProviderAppointments.execute({
+			provider_id,
+			year,
+			month,
+			day,
+		});
+
+		return response.json(appointments);
+	}
+}
+
+export default ProviderAppointmentsController;
+
+```
+
+3. Criar no *appointments.routes.ts*
+
+```typescript
+import { Router } from 'express';
+
+import ensureAuthenticated from '@modules/users/infra/http/middlewares/ensureAuthenticated';
+import AppointmentsController from '../controllers/AppointmentsController';
+import ProviderAppointmentsController from '../controllers/ProviderAppointmentsController';
+
+const appointmentsRouter = Router();
+const appointmentsController = new AppointmentsController();
+const providerAppointmentsController = new ProviderAppointmentsController();
+
+appointmentsRouter.use('/', ensureAuthenticated);
+
+appointmentsRouter.post('/', appointmentsController.create);
+appointmentsRouter.get('/me', providerAppointmentsController.index);
+
+
+export default appointmentsRouter;
+
+```
