@@ -7616,6 +7616,8 @@ class CreateAppointmentService {
 ## Refatorando os testes
 1. Criar *FakeNotificationsRepository*, pois o CreateAppointmentService agora espera um repositório em seu constructor.
 ```typescript
+import { ObjectID } from 'mongodb';
+
 class FakeNotificationsRepository implements INotificationsRepository {
 	private notifications: Notification[] = [];
 
@@ -7638,3 +7640,76 @@ export default FakeNotificationsRepository;
 
 2. Inserir no constructor do *CreateAppointmentService.spec.ts* o *FakeNotificationsRepository*
 
+## Validando Dados
+Utilizar a lib celebrate que é um middleware de validação para express utilizando a lib Joi.
+1. Instalar a lib celebrate
+```bash
+$yarn add celebrate
+
+```
+
+2. Ir em todas as rotas put/post ou que receba parâmetro de rota(route params) e utilizar o celebrate
+appointments.routes.ts
+
+```typescript
+import { celebrate, Joi, Segments } from 'celebrate'
+
+appointmentsRouter.post(
+	'/',
+	celebrate({
+		[Segments.BODY]: {
+			provider_id: Joi.string().uuid().required(),
+			date: Joi.date(),
+		},
+	})
+	, appointmentsController.create,
+);
+``` 
+> Posso passar 'body' ou [Segments.BODY], pois quando a key de um objeto é uma variável, devo utilizar cochetes por volta.
+
+```typescript
+providersRouter.get(
+	'/:provider_id/day-availability',
+	celebrate({
+		[Segments.PARAMS]: {
+			provider_id: Joi.string().uuid().required(),
+		}
+	}),
+	providersDayAvailabilityController.index,
+);
+providersRouter.get(
+	'/:provider_id/month-availability',
+		celebrate({
+		[Segments.PARAMS]: {
+			provider_id: Joi.string().uuid().required(),
+		}
+	}),
+	providersMonthAvailabilityController.index,
+);
+```
+
+```typescript
+passwordRouter.post(
+	'/forgot',
+	celebrate({
+		[Segments.BODY]: {
+			email: Joi.string().email().required(),
+		},
+	}),
+	forgotPasswordControler.create,
+);
+
+passwordRouter.post(
+	'/reset',
+	celebrate({
+		[Segments.BODY]: {
+			token: Joi.string().uuid().required(),
+			password: Joi.string().required(),
+			password_confirmation: Joi.string().required().valid(Joi.ref('password')),
+		}
+	}),
+	resetPasswordController.create,
+);
+```
+**Fazer isso para as demais rotas!**
+**Dessa forma, não será possível fazer a chamada dos controllers sem que todos os campos estejam de acordo**
