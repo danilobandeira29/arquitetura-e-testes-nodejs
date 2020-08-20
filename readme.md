@@ -7427,3 +7427,142 @@ $docker run --name mongodb -p 27017:27017 -d -t mongo
 ```bash
 mongodb://localhost:27017
 ```
+
+## Estrutura de Notificações
+1. Criar conexão com o MongoDB utilizando o TypeORM
+```json
+[
+	{
+		"name": "default",
+		"type": "postgres",
+		"host": "localhost",
+		"port": 5434,
+		"username": "postgres",
+		"password": "docker",
+		"database": "gostack_gobarber",
+		"entities": [
+			"./src/modules/**/infra/typeorm/entities/*.ts"
+		],
+		"migrations":[
+			"./src/shared/infra/typeorm/migrations/*.ts"
+		],
+		"cli":{
+			"migrationsDir": "./src/shared/infra/typeorm/migrations"
+		}
+	},
+	{
+		"name":"mongo",
+		"type": "mongodb",
+		"host": "localhost",
+		"port": 27017,
+		"database": "gobarber",
+		"useUnifiedTopology": true,
+		"entities": [
+			"./src/modules/**/infra/typeorm/schemas/*.ts"
+		]
+	}
+
+]
+```
+
+2. Fazer a instação do mongodb
+```bash
+$ yarn add mongodb
+
+```
+
+3. Criar o domínio notifications, pois pode chegar um momento que talvez eu envie notificações de vários módulos
+	- Criar pasta domínio *notifications*
+	- Criar dentro dela as pastas: repositories, services, infra, dtos(como é feito nos outros domínios).
+
+4. Criar a **entidade** de Notificação, que no mongo é chamada de **schema**
+```typescript
+import { 
+	ObjectID,
+	ObjectIdColumn,
+	Column,
+	Entity,
+	CreateDateColumn,
+	UpdateDateColumn,
+} from 'typeorm';
+
+@Entity('notifications')
+class Notification {
+
+	@ObjectIdColumn()
+	id: ObjectID;
+
+	@Column()
+	content: string;
+
+	@Column('uuid')
+	recipient_id: string;
+
+	@Column({ default: false })
+	read: boolean;
+
+	@CreateDateColumn()
+	created_at: Date;
+
+	@UpdateDateColumn()
+	updated_at: Date;
+}
+
+```
+
+> O valor da column read recebe default, pois não temos migrations para fazer isso quando utilizamos o MongoDB.
+
+5. Criar a interface do repositório de notifications e sua DTO
+```typescript
+export default interface ICreateNotificationDTO {
+	content: string;
+	recipient_id: string;
+}
+
+```
+
+```typescript
+import Notification from '../infra/typeorm/schemas/Notification';
+import ICreateNotificationDTO from '../dtos/ICreateNotificationDTO';
+
+export default interface INotificationsRepository {
+	create(data: ICreateNotificationDTO): Promise<Notification>;
+}
+
+```
+
+6. Criação do repositório do typeorm
+```typescript
+import { MongoRepository, getMongoRepository } from 'typeorm';
+
+import INotificationsRepository from '@modules/notifications/repositories/INotificationsRepository';
+import ICreateNotificationDTO from '@modules/notifications/dtos/ICreateNotificationDTO';
+import Notification from '@modules/notifications/infra/typeorm/schemas/Notification';
+
+class NotificationsRepository implements INotificationsRepository {
+	private ormRepository: MongoRepository<Notification>
+
+	constructor(){
+		this.ormRepository = getMongoRepository(Notification, 'mongo');
+	}
+
+	public async create({
+		content,
+		recipient_id,
+	}: ICreateNotificationDTO): Promise<Notification> {
+		const notification = await this.ormRepository.create({
+			content,
+			recipient_id,
+		});
+
+		await this.ormRepository.save(notification);
+
+		return notification;
+	}
+}
+
+export default NotificationsRepository;
+```
+> O repositório do MongoDB(não-relacional) tem seus próprios métodos, por isso importar *MongoRepository* ao invés de *Repository*
+
+> Ao invés de utilizar *getRepository* como é feito em um banco relacional, devo utilizar o *getMongoRepository()* que recebe como primeiro parâmetro o repositório e segundo qual o nome da conexão. Onde do postgres está default e do MongoDB está mongo
