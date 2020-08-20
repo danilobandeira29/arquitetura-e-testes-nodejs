@@ -7566,3 +7566,49 @@ export default NotificationsRepository;
 > O repositório do MongoDB(não-relacional) tem seus próprios métodos, por isso importar *MongoRepository* ao invés de *Repository*
 
 > Ao invés de utilizar *getRepository* como é feito em um banco relacional, devo utilizar o *getMongoRepository()* que recebe como primeiro parâmetro o repositório e segundo qual o nome da conexão. Onde do postgres está default e do MongoDB está mongo
+
+## Enviando notificações
+1. Criar o container pra injetar o *NotificationsRepository*
+```typescript
+container.registerSingleTon<INotificationsRepository>(
+	'NotificationsRepository',
+	NotificationsRepository,
+);
+
+```
+
+2. Fazer a injeção de dependência do *NotificationsRepository* no *CreateAppointmentService*, pois será disparado uma notificação sempre que o prestador receber um novo agendamento.
+
+```typescript
+import { startOfHour, format } from 'date-fns';
+
+@injectable()
+class CreateAppointmentService {
+	constructor(
+		@inject('AppointmentsRepository')
+		private appointmentsRepository: IAppointmentsRepository,
+
+		@inject('NotificationsRepository')
+		private notificationsRepository: INotificationsRepository,
+	)
+
+	public async execute({
+		provider_id,
+		date,
+		user_id,
+	}: IRequest): Promise<Appointment> {
+		const appointmentDate = startOfHour(date);
+		...
+
+		const dateFormated = format(appointmentDate, "dd/MM/yyyy 'às' HH:mm");
+
+		await this.notificationsRepository.execute({
+			recipient_id: provider_id,
+			content: `Novo agendamento para o dia ${dateFormated}h`,
+		});
+
+		return appointment;
+	}
+}
+```
+3. Criar um agendamento no insomnia e verificar no mongodb se realmente foi criado uma notificação.
