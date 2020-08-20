@@ -7612,3 +7612,29 @@ class CreateAppointmentService {
 }
 ```
 3. Criar um agendamento no insomnia e verificar no mongodb se realmente foi criado uma notificação.
+
+## Refatorando os testes
+1. Criar *FakeNotificationsRepository*, pois o CreateAppointmentService agora espera um repositório em seu constructor.
+```typescript
+class FakeNotificationsRepository implements INotificationsRepository {
+	private notifications: Notification[] = [];
+
+	public async create({
+		content,
+		recipient_id,
+	}: ICreateNotificationDTO): Promise<Notification>{
+		const notification = new Notification();
+
+		Object.assign(notification, { id: new ObjectID(), content, recipient_id });
+
+		this.notifications.push(notification);
+
+		return notification;
+	}
+}
+
+export default FakeNotificationsRepository;
+```
+
+2. Inserir no constructor do *CreateAppointmentService.spec.ts* o *FakeNotificationsRepository*
+
