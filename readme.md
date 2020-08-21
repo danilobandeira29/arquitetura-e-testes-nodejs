@@ -7756,3 +7756,81 @@ $ git rm --cached ormconfig.json
 		link: `${process.env.APP_WEB_URL}/reset_password?token=${token}`,
 	},
 ```
+## Utilizando class-transformer
+**Às vezes, não queremos mostrar alguma informação quando vai para o frontend(como deletar a password do usuário quando é requisitado, por exemplo), por isso, transformar os dados/classe antes dos dados irem para fora da API**
+
+**Colocar a URL do avatar completa antes mesmo de ir para o frontend**
+
+1. Instalar a lib class-transformer
+```bash
+$yarn add class-transformer
+
+```
+
+2. Ir na entidade/schema de User
+```typescript
+import { Exclude, Expose } from 'class-transformer';
+
+
+@Entity('users')
+class User {
+	@PrimaryGeneratedColumn('uuid')
+	id: string;
+
+	@Column()
+	name: string;
+
+	@Column()
+	email: string;
+
+	@Column()
+	@Exclude()
+	password: string;
+
+	@Column()
+	avatar: string;
+
+	@CreateDateColumn()
+	created_at: Date;
+
+	@UpdateDateColumn()
+	updated_at: Date;
+
+	@Expose({ name: 'avatar_url' })
+	getAvatarUrl(): string | null {
+		return this.avatar 
+		? `${process.env.APP_API_URL}/files/${this.avatar}`
+		: null;
+	}
+
+}
+
+export default User;
+
+```
+
+3. Ir no .env e criar a variavel APP_API_URL
+```typescript
+APP_API_URL=http://localhost:3333
+
+```
+4. Ir nos controllers que retornam um user
+
+```typescript
+// ProfileController.ts
+import { classToClass } from 'class-transformer';
+
+	public async show(request: Request, response: Response): Promise<Response> {
+		const user_id = request.user.id;
+
+		const showProfile = container.resolve(ShowProfileService);
+
+		const user = await showProfile.execute({ user_id });
+
+		return response.json(classToClass(user));
+	}
+
+```
+
+> Remover o delete user.password e envolver o retorno do usuário no método classToClass do class-transformer
+> Dessa forma, irá modificar de acordo com os decorators que passamos na entidade/schema User
