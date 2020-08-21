@@ -7713,3 +7713,46 @@ passwordRouter.post(
 ```
 **Fazer isso para as demais rotas!**
 **Dessa forma, não será possível fazer a chamada dos controllers sem que todos os campos estejam de acordo**
+
+## Variáveis Ambiente(.env)
+
+**Informações que contém valores diferentes de acordo com o ambiente(dev, produção e afins) que nossa aplicação está rodando.**
+
+**O acesso ao banco de dados é outro quando estou em produção**
+
+**A forma de enviar email é outra quando estou em produção**
+
+1. Instalar a lib dotenv
+```bash
+$ yarn add dotenv
+```
+2. Fazer a importação no *server.ts*(abaixo do reflect-metadata)
+```js
+import 'dotenv/config'
+```
+> Ir no .tsconfig.json e **adicionar o atributo "allowJS": true** para que seja possível importar arquivos js.
+
+3. Criar na raíz o arquivo .env
+```env
+APP_SECRET=insert_your_secret_here
+APP_WEB_URL=http://localhost:3000
+```
+4. Adicionar no *.gitignore*
+```
+.env
+ormconfig.json
+```
+5. Remover o *ormconfig.json* do git
+```bash
+$ git rm --cached ormconfig.json
+```
+
+6. Ir no config/auth e substituir o valor do *secret* para *process.env.APP_SECRET*
+
+7. Ir no *SendForgotPasswordEmailService* e inserir o *process.env.APP_WEB_URL*
+```typescript
+	variables: {
+		name: user.name,
+		link: `${process.env.APP_WEB_URL}/reset_password?token=${token}`,
+	},
+```
