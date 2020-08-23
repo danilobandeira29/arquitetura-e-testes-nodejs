@@ -7834,3 +7834,122 @@ import { classToClass } from 'class-transformer';
 
 > Remover o delete user.password e envolver o retorno do usuário no método classToClass do class-transformer
 > Dessa forma, irá modificar de acordo com os decorators que passamos na entidade/schema User
+
+## Emails pelo Amazon SES
+Requisitos
+- Possuir uma conta na Amazon AWS
+- Possuir um domínio de Email
+> Caso não possua domínio de email, usar o Zoho para a criação de um domínio de email gratuíto
+1. Entrar na conta da Amazon AWS e procurar por SES(Simple Email Service).
+2. Configurar um domain, passando o seu domínio e inserir as informações que a Amazon irá gerar no DNS do seu domínio.
+3. Ir na aba *Email Addresses* e adicionar um email da hotmail(mais fácil) ou criar um domain de email no Zoho.
+4. Você receberá um email para validar esse email inserido.
+5. Criar uma environment variable *MAIL_DRIVER=ses*
+6. Ir em *@config* e criar o *mail.ts*.
+```typescript
+interface IMailConfig {
+	driver: 'etheral' | 'ses';
+	defaults: {
+		from: {
+			name: string;
+			email: string;
+		},
+	};
+};
+
+export default {
+	driver: process.env.MAIL_DRIVER || 'ethereal',
+
+	defaults: {
+		from: {
+			email: 'danilobandeiraii@hotmail.com',
+			name: 'Danilo Bandeira',
+		},
+	}
+} as IMailConfig;
+```
+> No from irá o email que eu tenho configurado do SES.
+
+7. Fazer a instalação do *aws-sdk*
+
+8. Criar o provider de mail *SESMailProvider.ts*.
+```typescript
+import nodemailer, { Transporter } from 'nodemailer';
+import AWS from 'aws-sdk';
+import { inject, injectable } from 'tsyringe';
+import mailConfig from '@config/mail';
+
+import IMailTemplateProvider from '@shared/container/providers/MailTemplateProvider/models/IMailTemplateProvider';
+import IMailProvider from '../models/IMailProvider';
+import ISendMailDTO from '../dtos/ISendMailDTO';
+
+@injectable()
+class SESMailProvider implements IMailProvider {
+	private client: Transporter;
+
+	constructor(
+		@inject('MailTemplateProvider')
+		private mailTemplateProvider: IMailTemplateProvider,
+	) {
+		this.client = nodemailer.createTransport({
+			SES: new AWS.SES({
+				apiVersion: '2010-12-01',
+				region: 'us-east-2',
+			}),
+		});
+	}
+
+	public async sendMail({
+		to,
+		from,
+		subject,
+		templateData,
+	}: ISendMailDTO): Promise<void> {
+		const { name, email } = mailConfig.defaults.from;
+
+		await this.client.sendMail({
+			from: {
+				name: from?.name || name,
+				address: from?.email || email,
+			},
+			to: {
+				name: to.name,
+				address: to.email,
+			},
+			subject,
+			html: await this.mailTemplateProvider.parse(templateData),
+		});
+
+	}
+}
+
+export default SESMailProvider;
+
+```
+
+9. Ir no index.ts do container/providers de injeção de dependências.(será arrumado depois)
+```typescript
+container.registerInstance<IMailProvider>(
+	'MailProvider',
+
+	mailConfig.driver === 'ethereal'
+		? container.resolve(EtherealMailProvider)
+		: container.resolve(SESMailProvider),
+);
+
+```
+10. Configurar credenciais da AWS. Pode colocar as credências em environment variables.
+	- Ir na Amazon AWS e pesquisar por *IAM*.
+	- Ir na aba Users e adicionar um novo user.
+		- nome de usuário
+		- acess type: programmatic access
+		- set permissions: attach existing policies directly e colocar AmazonSESFullAcess(fará envio de email de qualquer tipo e poderia ter informações relevantes sobre o email se foi lido ou não, entre outros).
+		- next, next e create user
+		- **access key** and **secret access key** devem ser guardados, pois não irão aparecer novamente.
+	- Criar variáveis ambiente de acordo com os padrões da aws
+		- AWS_ACCESS_KEY_ID=
+		- AWS_SECRET_ACCESS_KEY=
+
+11. Enviar um email e verificar se foi recebido
+
+> Posso enviar emails via SMTP, mas **NÃO** é recomendado pra envio de emails em escala(batch-sending), pois ele faz conexão com o servidor, envia o email e depois fecha a conexão. Nesse casos, melhor utilizar a API da própria AWS.
