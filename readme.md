@@ -7953,3 +7953,69 @@ container.registerInstance<IMailProvider>(
 11. Enviar um email e verificar se foi recebido
 
 > Posso enviar emails via SMTP, mas **NÃO** é recomendado pra envio de emails em escala(batch-sending), pois ele faz conexão com o servidor, envia o email e depois fecha a conexão. Nesse casos, melhor utilizar a API da própria AWS.
+
+## Organizando Container
+1. Criar um *index.ts* para *MailProvider*, *MailTemplateProvider* e *StorageProvider*, que armazenaram as suas injeções de dependência
+```typescript
+// MailProvider
+import { container } from 'tsyringe';
+import mailConfig from '@config/mail';
+
+import IMailProvider from './models/IMailProvider';
+import SESMailProvider from './implementations/SESMailProvider';
+import EtherealMailProvider from './implementations/EtherealMailProvider';
+
+const providers = {
+	ses: SESMailProvider,
+	ethereal: EtherealMailProvider,
+}
+
+container.resolve<IMailProvider>(
+	'MailProvider',
+	providers[mailConfig.driver]
+)
+```
+
+```typescript
+// MailTemplateProvider
+import { container } from 'tsyringe';
+
+import IMailTemplateProvider from './models/IMailTemplateProvider';
+import HandlebarsMailTemplateProvider from './implementations/HandlebarsMailTemplateProvider';
+
+const providers = {
+	handlebars: HandlebarsMailTemplateProvider,
+}
+
+container.resolve<IMailProvider>(
+	'MailProvider',
+	providers.handlerbars
+)
+
+```
+
+```typescript
+// DiskStorageProvider
+import { container } from 'tsyringe';
+
+import IStorageProvider from './models/IStorageProvider';
+import DiskStorageProvider from './implementations/DiskStorageProvider';
+
+const providers = {
+	disk: DiskStorageProvider,
+}
+
+container.resolve<IMailProvider>(
+	'MailProvider',
+	providers.disk
+)
+
+```
+
+2. Fazer a importação de todos eles no *index.ts* de *providers*
+```typescript
+import './StorageProvider';
+import './MailTemplateProvider';
+import './MailProvider';
+
+```
