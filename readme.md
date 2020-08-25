@@ -8200,3 +8200,114 @@ getAvatar_url(): string | null {
 }
 
 ```
+
+## Configurando Cache
+**É uma das coisas mais importantes para garantir escalabilidade do projeto. Ou seja, número cada vez maior de usuário e não se preocupar se mais recursos estão sendo utilizados.**
+
+**Permite a gente armazenar o resultado de uma query complexa ou uma query que é chamada muitas vezes ao dia, por usuário diferentes. O resultado será armazenado em um lugar performatico, forma mais rápida. Por isso, iremos utilizar o Redis.**
+
+### Redis
+- Não conseguimos registrar dados estruturados nele, pois não possuí tabelas tradicionais(name: Danilo, idade: 26).
+- **Armazena chave e valor(semelhante ao localStorage).**
+> Exemplo: {
+	"appointments-list-PROVIDER_ID-26-08-2020"
+}
+- Caso a lista de appointments desse provider, nesse dia sofra alguma alteração, a cache deve ser invalidada, pois a lista sofreu alteração.
+
+1. Instalar o Redis
+```bash
+$docker run --name redis -p 6379:6379 -d -t redis:alpine
+```
+2. Utilizar como driver o ioredis
+```bash
+$yarn add ioredis
+```
+```bash
+$yarn add @types/ioredis -D
+```
+3. Criar o provider de cache(*CacheProvider*) com as pastas *models*, *implementations*, *fakes* e o *index.ts* para injeção de dependência.
+**models**
+
+```typescript
+export default interface ICacheProvider {
+	save(key: string, value: string): Promise<void>;
+	recover(key: string): Promise<string | null>;
+	invalidate(key: string): Promise<void>;
+}
+
+```
+
+**implementations**
+
+```typescript
+import Redis, { Redis as RedisClient } from 'ioredis';
+import ICacheProvider from './models/ICacheProvider';
+import cacheConfig from '@config/cache';
+
+class RedisCacheProvider implements ICacheProvider {
+	private client: RedisClient;
+
+	constructor(){
+		this.client = new Redis(cacheConfig.config.redis);
+	}
+
+	public async save(key: string, value: string): Promise<void> {
+		await this.client.set(key, value);
+	}
+
+	public async recover(key: string): Promise<string | null> {
+		const data = await this.client.get(key);
+
+		return data;
+	}
+
+	public async invalidate(key: string): Promise<void> {}
+}
+
+export default RedisCacheProvider;
+
+```
+**CacheProvider/index.ts**
+
+```typescript
+import { container } from 'tsyringe';
+import ICacheProvider from './models/ICacheProvider';
+import RedisCacheProvider from './implementations/RedisCacheProvider';
+
+const providers = {
+	redis: RedisCacheProvider,
+};
+
+container.registerSingleton<ICacheProvider>('CacheProvider', providers.redis);
+
+```
+> Fazer a importação dessa injeção no index do providers
+
+4. Fazer a criação da configuração de cache no @config/cache
+```typescript
+import { RedisOptions } from 'ioredis';
+
+interface ICacheConfig {
+	driver: string;
+
+	config: {
+		redis: RedisOptions;
+	}
+}
+
+export default {
+	driver: 'redis',
+
+	config: {
+		redis: {
+			host: 'localhost',
+			port: 6379,
+			password: undefined,
+		},
+	},
+
+} as ICacheConfig;
+
+```
+
+5. Fazer o teste se o redis está funcionando armazenando algum valor e pegando esse valor pela chave.
