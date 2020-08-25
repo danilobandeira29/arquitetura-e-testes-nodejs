@@ -8019,3 +8019,184 @@ import './MailTemplateProvider';
 import './MailProvider';
 
 ```
+## Upload de arquivos com Amazon S3
+**O que é Amazon S3?**
+
+Content Delivery Network(CDN)
+
+**Por que utilizar Amazon S3?**
+
+1. Os servidores hoje em dia possuem pouco espaço no disco, pois são otimizados para performance(utilizam ssd). Quando temos pouco espaço, não da pra salvar arquivos em disco.
+
+2. Quando uma aplicação Node é utilizada, ele permite a **Escala horizontal**. A aplicação está lenta, o que posso fazer? Aumentar os recursos(memória, processamento e afins) ou posso criar um novo servidor.
+	- **Escala vertical**: Aumentar os recursos(memória, processamento e afins)
+	- **Escala horizontal**: Criar um novo servidor e executar a aplicação em servidores diferentes, ou seja, distribuição de carga.
+
+**Se os servidores serão diferentes, como eu irei controlar os arquivos físicos? Em um servidor? Ambos? Por isso utilizar o CDN Amazon S3.**
+
+
+> Será usado apenas em ambiente de produção
+
+### Criar um novo usuário para utilizar o Amazon S3 ou alterar as permissões de um já existente.
+### Colocar as credenciais desse usuário nas environment variables
+
+- Procurar por S3
+- Criar um novo bucket
+- Desmarcar a opção *Block all public access*(pois farei acesso de forma pública a arquivos de image)
+- Ir na aplicação e inserir um novo Storage Provider chamado *S3StorageProvider.ts*
+```typescript
+import fs from 'fs';
+import path from 'path';
+import aws, { S3 } from 'aws-sdk';
+import mime from 'mime'
+import uploadConfig from '@config/upload';
+import IStorageProvider from '../models/IStorageProvider';
+
+class S3StorageProvider implements IStorageProvider {
+	private client: S3;
+
+	constructor(){
+		this.client = new aws.S3({
+			region: 'sa-east-1',
+		});
+	}
+
+	public async saveFile(file: string): Promise<string> {
+		const originalPath = path.resolve(uploadConfig.tmpFolder, file);
+
+		const fileContent = await fs.promises.readFile(originalPath);
+
+		const ContentType = mime.getType(originalPath);
+
+		await this.client.putObject({
+			Bucket: uploadConfig.config.aws.bucket,
+			Key: file,
+			ACL: 'public-read',
+			Body: fileContent,
+			ContentType
+		})
+		.promise();
+
+		await fs.promises.unlink(originalPath);
+
+		return file;
+	}
+
+	public async deleteFile(file: string): Promise<void> {
+		await this.client.deleteObject({
+			Bucket: uploadConfig.config.aws.bucket,
+			Key: file,
+		}).promise()
+
+	}
+}
+
+export default S3StorageProvider;
+
+```
+
+> Key qual será o nome do arquivo.
+> ACL qual as permissões que daria para o arquivo.
+> Body é o conteúdo do arquivo.
+> Devo utilizar a sintaxe de callback ou utilizar o *.promise()*.
+
+- Fazer o test no insomnia
+
+- Criar a variavel ambiente
+```
+STORAGE_DRIVER=s3
+```
+- Ir no *@config/upload.ts*
+```typescript
+import path from 'path';
+import crypto from 'crypto';
+import multer, { StorageEngine } from 'multer';
+
+const tmpFolder = path.resolve(__dirname, '..', '..', 'tmp');
+
+interface IUploadConfig {
+	driver: 'disk' | 's3';
+
+	tmpFolder: string;
+	uploadsFolder: string;
+
+	multer: StorageEngine;
+
+	config: {
+		disk: {},
+		aws: {
+			bucket: string;
+		}
+	}
+};
+
+
+export default {
+	driver: process.env.STORAGE_DRIVER || 'disk',
+
+	tmpFolder,
+	uploadsFolder: path.join(tmpFolder, 'uploads'),
+
+	multer: {
+		storage: multer.diskStorage({
+			destination: tmpFolder,
+			filename(request, file, callback) {
+				const fileHash = crypto.randomBytes(10).toString('HEX');
+
+				const fileName = `${fileHash}-${file.originalname}`;
+
+				return callback(null, fileName);
+			},
+		}),
+	},
+
+	config: {
+		disk: {},
+		aws: {
+			bucket: 'app-gobarber-stack',
+		} 
+	},
+} as IUploadConfig;
+
+```
+
+- Ir no index.ts de *StorageProvider*
+```typescript
+import { container } from 'tsyringe';
+import uploadConfig from '@config/upload';
+
+import IStorageProvider from './models/IStorageProvider';
+import DiskStorageProvider from './implementations/DiskStorageProvider';
+import S3StorageProvider from './implementations/S3StorageProvider';
+
+const providers = {
+	disk: DiskStorageProvider,
+	s3: S3StorageProvider,
+};
+
+container.registerSingleton<IStorageProvider>(
+	'StorageProvider',
+	providers[uploadConfig.driver],
+);
+
+```
+
+- Ir nas rotas de user que fazem importação da config do multer e utilizar *uploadConfig.multer*
+- Ir na entidade de User e alterar a função para exibir o avatar_url de acordo com o StorageProvider
+```typescript
+getAvatar_url(): string | null {
+	if (!this.avatar){
+		return null
+	}
+
+	switch(uploadConfig.driver) {
+		case 'disk':
+			return `${process.env.APP_API_URL}/files/${this.avatar}`;
+		case 's3':
+			return `https://${uploadConfig.config.aws.bucket}.s3-sa-east-1.amazonaws.com/${this.avatar}`;
+		default:
+			return null;
+	}
+}
+
+```
