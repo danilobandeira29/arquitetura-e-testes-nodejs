@@ -8441,3 +8441,78 @@ class RedisCacheProvider implements ICacheProvider {
 3. Ir no *CreateUserService*, chamar o novo método criado e testar.
 
 > Ele deve listar os usuários da cache, caso um novo usuário seja inserido na aplicação, as caches com esse prefixo serão invalidadas(deletadas) e ao listar os usuários novamente será feita uma consulta e uma nova cache será gerada.
+
+## Cache de Agendamentos
+**Cachear os agendamentos de um ano, mês e dia especifíco**. Para que seja cacheado quando o usuário realizar a primeira query. Só será refeita a query apenas se um novo agendamento for feito para aquele ano, mês e dia específico.
+
+1. Ir no *ListProviderAppointments.ts*
+```typescript
+class ListProviderAppointmentsService {
+	constructor(
+		@inject('AppointmentsRepository')
+		private appointmentsRepository: IAppointmentsRepository,
+
+		@inject('CacheProvider')
+		private cacheProvider: ICacheProvider,
+	) {}
+
+	public async execute({
+		provider_id,
+		year,
+		month,
+		day,
+	}: IRequest): Promise<Appointment[]> {
+		const cacheKey = `provider-appointments:${provider_id}:${year}-${month}-${day}`;
+
+		let appointments = await this.cacheProvider.recover<Appointment[]>(
+			cacheKey,
+		);
+
+		if (!appointments) {
+			appointments = await this.appointmentsRepository.findAllInDayFromProvider(
+				{
+					year,
+					month,
+					provider_id,
+					day,
+				},
+			);
+
+			await this.cacheProvider.save(cacheKey, appointments);
+
+		}
+
+		return appointments;
+	}
+}
+```
+
+2. Ir no *CreateAppointmentService.ts*, adicionar depois da criação de um agendamento a invalidação do cache.
+```typescript
+await this.cacheProvider.invalidate(
+	`provider-appointments:${provider_id}:
+	${format(appointmentsDate, 'yyyy-m-d')}
+	`,
+);
+
+```
+3. Ir no método invalidate do *RedisCacheProvider.ts* e atualizar
+```typescript
+class RedisCacheProvider {
+	private client: RedisOptions
+
+	constructor(){
+		this.client = new Redis(cacheConfig.config.redis);
+	}
+
+	...
+	public async invalidate(key: string): Promise<void> {
+		await this.client.del(key);
+	}
+}
+
+``` 
+
+**Quando utilizar Cache?**
+
+Utilizar em serviços que serão mais utilizados na aplicação. Depois de colocar a aplicação online, fazer o monitoramento de querys no banco utilizando alguma ferramenta, como por exemplo, Datadog.
