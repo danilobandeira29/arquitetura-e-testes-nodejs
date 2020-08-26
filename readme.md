@@ -8404,3 +8404,40 @@ export default RedisCacheProvider;
 
 ```
 3. Testar no insomnia se o cache está funcionando
+
+## Invalidando Cache
+**O Cache de listagem de providers deve ser invalidado quando um novo usuário for cadastrado na aplicação.**
+1. Criar um novo método na interface chamado *invalidatePrefix*
+```typescript
+export default interface ICacheProvider {
+	save(key: string, value: string): Promise<void>;
+	recover(key: string): Promise<string | null>;
+	invalidate(key: string): Promise<void>;
+	invalidatePrefix(prefix: string): Promise<void>;
+}
+
+```
+> onde esse método irá receber um prefixo como parâmetro e irá eliminar todos os cache com aquele prefixo, nesse caso, *providers-list*
+
+2. Criar o método na implementação *RedisCacheProvider*
+```typescript
+class RedisCacheProvider implements ICacheProvider {
+
+	public async invalidatePrefix(prefix: string): Promise<void> {
+		const keys = await this.client.keys(`${prefix}:*`);
+
+		const pipeline = this.client.pipeline();
+
+		keys.forEach(key => {
+			pipeline.del(key);
+		})
+
+		await pipeline.exec();
+	}
+}
+```
+> Pipeline serve como um processo paralelo, que irá deletar cada key e depois irá executar e trazer essas mudanças que foram feitas de forma paralela.
+
+3. Ir no *CreateUserService*, chamar o novo método criado e testar.
+
+> Ele deve listar os usuários da cache, caso um novo usuário seja inserido na aplicação, as caches com esse prefixo serão invalidadas(deletadas) e ao listar os usuários novamente será feita uma consulta e uma nova cache será gerada.
