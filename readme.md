@@ -8311,3 +8311,96 @@ export default {
 ```
 
 5. Fazer o teste se o redis está funcionando armazenando algum valor e pegando esse valor pela chave.
+
+## Cache Lista de Providers
+1. Ir no *ListProvidersService.ts* e ir alterando a interface do *ICacheProvider.ts*
+```typescript
+import { inject, injectable } from 'tsyringe';
+import User from '@modules/users/infra/typeorm/entities/User';
+import IUsersRepository from '@modules/users/repositories/IUsersRepository';
+import ICacheProvider from '@shared/container/providers/CacheProvider/models/ICacheProvider';
+
+interface IRequest {
+	user_id?: string;
+}
+
+@injectable()
+class ListProvidersService {
+	constructor(
+		@inject('UsersRepository')
+		private usersRepository: IUsersRepository,
+
+		@inject('CacheProvider')
+		private cacheProvider: ICacheProvider,
+	) {}
+
+	public async execute({ user_id }: IRequest): Promise<User[]> {
+		let users = await this.cacheProvider.recover<User[]>(`providers-list:${user_id}`);
+
+		if (!users) {
+			users = await this.usersRepository.findAllProviders({
+				except_user_id: user_id,
+			});
+
+
+			await this.cacheProvider.save(`providers-list:${user_id}`, JSON.stringify(users));
+		}
+
+		return users;
+
+	}
+}
+
+export default ListProvidersService;
+
+```
+> Preciso salvar no cache a listagem dos prestadores, mas ela vária de acordo com cada usuário, pois ela excluí o usuário que faz a consulta. Ou seja, será uma cache para cada usuário.
+> O método recover agora tem um argumento, onde ele irá retornar T ou nulo, ao invés de User[] ou nulo
+
+```typescript
+export default interface ICacheProvider {
+	save(key: string, value: any): Promise<void>;
+	recover<T>(key: string): Promise<T | null>;
+	invalidate(key: string): Promise<void>;
+}
+
+```
+> O método save irá receber como value any, pois ele pode ser qualquer coisa(um objeto em formato de string, array...)
+
+2. Fazer alteração no *RedisCacheProvider.ts*
+```typescript
+import Redis, { Redis as RedisClient } from 'ioredis';
+import cacheConfig from '@config/cache';
+
+import ICacheProvider from '../models/ICacheProvider';
+
+class RedisCacheProvider implements ICacheProvider {
+	private client: RedisClient;
+
+	constructor() {
+		this.client = new Redis(cacheConfig.config.redis);
+	}
+
+	public async save(key: string, value: string): Promise<void> {
+		await this.client.set(key, value);
+	}
+
+	public async recover<T>(key: string): Promise<T | null> {
+		const data = await this.client.get(key);
+
+		if (!data) {
+			return null;
+		}
+
+		const parsedData = JSON.parse(data) as T;
+
+		return parsedData;
+	}
+
+	public async invalidate(key: string): Promise<void> {}
+}
+
+export default RedisCacheProvider;
+
+```
+3. Testar no insomnia se o cache está funcionando
