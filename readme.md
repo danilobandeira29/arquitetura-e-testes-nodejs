@@ -8564,3 +8564,52 @@ export default FakeCacheProvider;
 2. Refatorar os testes colocando o FakeCacheProvider
 
 > Obs: Ocorrerá um erro no AuthenticateUserService, basta ir na configuração do JWT e colocar a variável ambiente || 'default'
+
+## Express rate-limit
+Adicionar um middleware do rate-limiter-flexible para lidar com possíveis ataques de muitas requisições em um curto período de tempo providos de um usuário mal intencionado.
+
+1. Instalar o note-rate e o redis
+```bash
+$yarn add rate-limiter-flexible
+
+$yarn add redis
+
+$yarn add @types/redis -D
+
+```
+
+2. Criar o middleware *rateLimit.ts*
+```typescript
+import redis from 'redis';
+import { RateLimiterRedis } from 'rate-limite-flexible'
+
+const redisClient = redis.createClient(
+	host: process.env.REDIS_HOST,
+	port: process.env.REDIS_PORT,
+	password: process.env.REDIS_PASS || undefined,
+)
+
+const limiter = new RateLimiterRedis({
+	storeClient: redisClient,
+  keyPrefix: 'ratelimit',
+  points: 5,
+  duration: 1,
+	blockDuration: 10,
+})
+
+
+export default async function rateLimiter(
+	request: Request,
+	response: Response,
+	next: NextFunction,
+): Promise<void> {
+	try {
+		await limiter.consume(request.ip)
+
+		return next();
+	} catch(err) {
+		throw new AppError('Too many request', 429)
+	}
+}
+
+```
