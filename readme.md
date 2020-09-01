@@ -8613,3 +8613,24 @@ export default async function rateLimiter(
 }
 
 ```
+## Ajustes na API
+
+### Utilizando query params
+Nos controllers que são utilizados para mostrar a disponibilidade de um provider, alguns dos parâmetros são passados via body mesmo sendo uma requisição do tipo **GET**. Mas	métodos do tipo get **NÃO** podemos enviar
+um body, por isso, iremos enviar via **QUERY PARAMS**.
+```typescript
+class ProviderAppointmentsController {
+	public async index(request: Request, response: Response): Promise<Response> {
+		const provider_id = request.user.id;
+		const { year, month, day } = request.query;
+
+		...
+	}
+}
+
+```
+
+### Agendamento no mesmo horário
+
+### Dias indisponíveis do mês
+### Clientes de agendamentos
