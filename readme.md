@@ -8743,3 +8743,87 @@ export default ListProviderMonthAvailabilityService;
 ```
 
 ### Clientes de agendamentos
+No frontend, o agendamentos do dia de um provider exibe tanto informações sobre o cliente tal como avatar.
+
+- Posso ir no relacionamento com o **Cliente**, **passar um objeto de configurações e habilitar o eager**. Então, ao trazer os dados de um appointment, irá trazer os dados do usuário também.
+
+> O Problema com isso, é que trará os dados de usuários quando quisermos **apenas** mostrar os dados dos appointments.
+> Posso utilizar o *lazy* ao invés do *eager*, assim conseguirei recuperar os dados de um usuário da seguinte forma *const user = await appointment.user*
+
+```typescript
+import {
+	Entity,
+	Column,
+	PrimaryGeneratedColumn,
+	CreateDateColumn,
+	UpdateDateColumn,
+	ManyToOne,
+	JoinColumn,
+} from 'typeorm';
+import User from '@modules/users/infra/typeorm/entities/User';
+
+@Entity('appointments')
+class Appointment {
+	@PrimaryGeneratedColumn('uuid')
+	id: string;
+
+	@Column()
+	provider_id: string;
+
+	@ManyToOne(() => User)
+	@JoinColumn({ name: 'provider_id' })
+	provider: User;
+
+	@Column()
+	user_id: string;
+
+	@ManyToOne(() => User, { eager: true })
+	@JoinColumn({ name: 'user_id' })
+	user: User;
+
+	@Column('timestamp with time zone')
+	date: Date;
+
+	@CreateDateColumn()
+	created_at: Date;
+
+	@UpdateDateColumn()
+	updated_at: Date;
+}
+
+export default Appointment;
+
+```
+
+Mas utilizei outra estratégia: indo diretamente no repositório.
+- Ir no repositório do TypeORM, ir depois do *where* e inserir a flag *relations*.
+```typescript
+class AppointmentsRepository implements IAppointmentsRepository {
+	...
+	public async findAllInDayFromProvider({
+		provider_id,
+		month,
+		year,
+		day,
+	}: IFindAllInDayFromProviderDTO): Promise<Appointment[]> {
+		const parsedDay = day.toString().padStart(2, '0');
+		const parsedMonth = month.toString().padStart(2, '0');
+
+		const appointments = await this.ormRepository.find({
+			where: {
+				provider_id,
+				date: Raw(
+					dateFieldName =>
+						`to_char(${dateFieldName}, 'DD-MM-YYYY') = '${parsedDay}-${parsedMonth}-${year}'`,
+				),
+			},
+
+			// terá a mesma função do eager
+			relations: ['user'],
+		});
+		return appointments;
+	}
+}
+```
+
+> **Devo pesquisar também sobre eager loading do typeorm, pois ele utiliza essa estratégia quando utilizo a flag *relations* acima.**
