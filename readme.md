@@ -8827,3 +8827,70 @@ class AppointmentsRepository implements IAppointmentsRepository {
 ```
 
 > **Devo pesquisar também sobre eager loading do typeorm, pois ele utiliza essa estratégia quando utilizo a flag *relations* acima.**
+
+## Serialização no Cache
+**Serialização**
+Processo feito com o **class-transformer** para excluir alguns campos e mostrar outras. Atualmente alguns acontecem diretamente no controller.
+
+Quando listamos os appointments de um provider, as informações do usuário(como senha) também vem junta e não vem a avatar_url. Por isso, deve ser feita a **Serialização no cache**, ou seja, no momento que é salvo no cache. Caso contrário(serializar no controller), o cache perderá a referência que a informação é uma class, pois ele será transformado pelo cache em objeto javascript e devolvido ao controller como tal.
+
+```typescript
+import { inject, injectable } from 'tsyringe';
+import { classToClass } from 'class-transformer';
+
+import ICacheProvider from '@shared/container/providers/CacheProvider/models/ICacheProvider';
+import Appointment from '../infra/typeorm/entities/Appointment';
+import IAppointmentsRepository from '../repositories/IAppointmentsRepository';
+
+interface IRequest {
+	provider_id: string;
+	day: number;
+	month: number;
+	year: number;
+}
+
+@injectable()
+class ListProviderAppointmentsService {
+	constructor(
+		@inject('AppointmentsRepository')
+		private appointmentsRepository: IAppointmentsRepository,
+
+		@inject('CacheProvider')
+		private cacheProvider: ICacheProvider,
+	) {}
+
+	public async execute({
+		provider_id,
+		year,
+		month,
+		day,
+	}: IRequest): Promise<Appointment[]> {
+		const cacheKey = `provider-appointments:${provider_id}:${year}-${month}-${day}`;
+
+		let appointments = await this.cacheProvider.recover<Appointment[]>(
+			cacheKey,
+		);
+
+		if (!appointments) {
+			appointments = await this.appointmentsRepository.findAllInDayFromProvider(
+				{
+					year,
+					month,
+					provider_id,
+					day,
+				},
+			);
+
+			// dessa forma ja salvará no cache de forma serializada
+			await this.cacheProvider.save(cacheKey, classToClass(appointments));
+		}
+
+		return appointments;
+	}
+}
+
+export default ListProviderAppointmentsService;
+
+```
+
+**Dessa forma salvará no cache já Serializado**
