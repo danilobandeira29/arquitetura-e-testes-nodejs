@@ -8631,6 +8631,50 @@ class ProviderAppointmentsController {
 ```
 
 ### Agendamento no mesmo horário
+Ao criar um novo agendamento, era verificado se existia um agendamento naquele horário, MAS era verificado em todos os agendamentos e não apenas só de um provider. Por isso, devemos passar no método findByDate() o provider_id.
+
+```typescript
+
+export default interface IAppointmentsRepository {
+	...
+	findByDate(date: Date, provider_id: string): Promise<Appointment | undefined>
+}
+
+```
+- Ir no repositório fake e atualizar.
+
+```typescript
+class FakeAppointmentsRepository implements IAppointmentsRepository {
+	...
+
+	public async findByDate(date: Date, provider_id: string): Promise<Appoinment | undefined> {
+		const findAppointment = this.appointments.find(appointment =>
+			isEqual(appointment.date, date) &&
+			appointment.provider_id === provider_id,
+		)
+	}
+}
+```
+
+- Ir no repositório do TypeORM e atualizar.
+
+```typescript
+class AppointmentsRepository implements IAppointmentsRepository {
+public async findByDate(
+		date: Date,
+		provider_id: string,
+	): Promise<Appointment | undefined> {
+		const findAppointment = await this.ormRepository.findOne({
+			where: { date, provider_id },
+		});
+
+		return findAppointment;
+	}
+}
+
+```
 
 ### Dias indisponíveis do mês
+
+
 ### Clientes de agendamentos
