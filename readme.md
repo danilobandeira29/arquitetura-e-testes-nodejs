@@ -42,7 +42,7 @@ Daqui para frente, serão separados por **Domínio**.
 
 ## Arquitetura baseada em **Domain Driven Design**(DDD)
 - É uma metodologia, assim como o **SCRUM**.
-- E assim como o **SCRUM**, possuí muitas técnias, mas **nem todas** elas se encaixam em qualquer tipo de projeto.
+- E assim como o **SCRUM**, possuí muitas técnicas, mas **nem todas** elas se encaixam em qualquer tipo de projeto.
 - Em resumo, **DDD** são **conceitos**, **princípios** e **boas práticas** que devo utilizar em boa partes dos **projetos Backend**.
 - **Aplica-se apenas ao Backend**.
 ## **Test Driven Development** (TDD)
@@ -3003,7 +3003,7 @@ Daqui para frente, serão separados por **Domínio**.
 
 ## Arquitetura baseada em **Domain Driven Design**(DDD)
 - É uma metodologia, assim como o **SCRUM**.
-- E assim como o **SCRUM**, possuí muitas técnias, mas **nem todas** elas se encaixam em qualquer tipo de projeto.
+- E assim como o **SCRUM**, possuí muitas técnicas, mas **nem todas** elas se encaixam em qualquer tipo de projeto.
 - Em resumo, **DDD** são **conceitos**, **princípios** e **boas práticas** que devo utilizar em boa partes dos **projetos Backend**.
 - **Aplica-se apenas ao Backend**.
 ## **Test Driven Development** (TDD)
@@ -8894,3 +8894,118 @@ export default ListProviderAppointmentsService;
 ```
 
 **Dessa forma salvará no cache já Serializado**
+
+# Clean Architecture
+
+<p align="center">
+	<img src="https://8thlight.com/blog/assets/posts/2012-08-13-the-clean-architecture/CleanArchitecture.jpg" alt="Clean Architecture">
+</p>
+
+É baseado, basicamente, no Principio da Dependência(Dependency Inversion Principle citado da metodologia SOLID).
+
+Observando as setas, é possível notar que existe dependende de fora para dentro, ou seja, a UI depende dos Controller, os Controllers dos Use Cases, e os Use cases das Entities.
+
+Coisas que mudam constantemente, ficam no nível mais externo.
+
+Mudanças nas Entidades podem refletir em toda a arquitetura, por isso, devem ser regras genéricas.
+
+Temos 4 camadas nessa arquitetura, são elas(de dentro para fora):
+
+1. Entities - Models, regras de negócio do domínio(ex: validação de email), coração da aplicação
+2. Use cases/Services - Regras de negócio 
+3. Controllers/Repositories - Gateways do Banco de dados e afins
+4. Interface/UI - WEB, Banco de dados, Interfaces externas
+
+Começarei falando de dentro para fora:
+
+1. *Entities* - Model de usuário, por exemplo, que pode ser um aluno e queira comprar um curso. Um usuário só pode comprar um curso que ele ainda não possuí, ou seja, essa **regra de negócio** fica dentro da camada de domínio, **e é INDEPENDENTE de qualquer tecnologia da aplicação**. O domínio não tem conhecimento de qual aplicação(mobile, web) está utilizando ele. **As regras de negócio do domain** podem ser validações de email, por exemplo, mas são basicamente validações que são necessárias para instânciar essa Entidade.
+
+A **entitie/model/domain** é o coração da aplicação, é o que faz a aplicação existir. Sem isso, não existe aplicação.
+
+Deve conter regras de negócio genéricas, regras que tenham menos possibilidade de mudar caso aja alguma mudança externa(como interface do usuário).
+
+Pode existir interfaces para que seja possível a utilização de alguma lib para consumir essas interfaces.
+
+2. *Use Cases* - **Operações de alto nível**, regras de negócio do sistema. Representação da automação de casos de uso que podem acontecer no mundo real. Exemplo: Um Use Case(service) irá importar uma entidade(já que ela depende da câmada de Entidade) e irá gerar informação à partir disso.
+
+**Também devem ser INDEPENDENTES de tecnologia.**
+
+As *Entities* vão modelar o mundo real. Já os *Use cases* vão modelar a automação desse mundo real.
+
+3. *Controllers* - Controladores, Presenters, Gateways de Banco de dados. **São todos adaptadores que fazem com que os Use cases se comuniquem com tecnologias especifícas.**
+Consideradas também como interfaces.
+
+Por exemplo: 
+- provider de send email
+- controllers que fazem lidam com a requisição, chama os use case(services) e retorna resposta
+- respositories que manipulam as entidades.
+
+4. Interface/UI/Frameworks - Irá apenas consumir os dados transformados(resposta) dos controllers e exibir para o usuário.
+
+<p align="center">
+	<img src="https://ik.imagekit.io/xfddek6eqk/Clean_Architecture_3i5eu9CKq.png" alt="Clean Architecture Interface">
+</p>
+
+O "I" significa Interface. Ou seja, tanto o Controller como o Presenter se comunicam com interfaces do Use case.
+
+**Você deve injetar dependência ao invés de importar.**
+
+**Devo passar dados para outro layer no formato mais adequado para esse outro layer.**
+
+Fontes de estudo: 
+https://blog.cleancoder.com/uncle-bob/2012/08/13/the-clean-architecture.html
+https://imasters.com.br/back-end/introducao-clean-architecture
+https://www.youtube.com/watch?v=7BNoxRntLYo
+https://www.youtube.com/watch?v=2uhFpIzfBhc
+https://www.youtube.com/watch?v=CnailTcJV_U
+
+
+## Arquitetura é sobre intenção. Não é sobre ferramentas ou frameworks, isso são apenas detalhes, e detalhes devem ficar escondidos não expostos.
+
+<inserir imagem do use case aqui>
+
+Existem 2 tipos de business rules:
+- As que são genéricas, ou seja, utilizadas em vários sistemas
+- As que são especifícas daquele negócio
+
+**A entity tem apenas regras genericas**
+
+**O interator/controller tem apenas regras especifícas de negócio.**
+
+**O interator/controller envia dado e recebe atrávez de interfaces/classes abstratas(boundary)**
+
+<inserir imagem do principle clean code aqui>
+
+**A boundary envia e recebe dados de um delivery machine(pode ser web, mobile ou qualquer client)**
+
+<inserir imagem do request aqui>
+
+O request model é apenas um request com estados primitivos, não é necessarimente um http request... é apenas um request que tem dados primitivos que podem ser interpretados por qualquer linguagem.
+
+<inserir imagem do result aqui>
+
+Teste não devem utilizar nenhum mecanismo que os tornem lentos, como por exemplo comunicação com o banco de dados. Posso utilizar dados em memória mesmo, utilizar estruturas como arrays e objetos.
+**Testes server para falar diretamente com as regras de negócio. Esse é um dos principios de testes, e sem qualquer lentidão ou funcionamento da aplicação.**
+
+**UI/View Model é apenas um plugin para as regras de negócio.**
+
+**Plugins são coisas vulneráveis aquilo que elas se conectam(regras de negócio), mas as coisas que ela se conectam são imunes aos plugins.**
+
+O que muda mais? UI ou Regras de negócio? UI!!
+
+### Se algo muda muito, então deve ser um plugin. Se algo NÃO muda muito, então deve ser um plug-in-to(algo a se conectar).
+
+**Database é só um detalhe, assim como Framework. Ou seja, ele é apenas um plugin.**
+
+Programadores são detail managers(construímos abstrações), devem SEPARAR o que é importante do que não é.
+
+Se você tiver testes bem escritos e que cubram todas as regras, então você pode confiar neles e alterar a aplicação conforme necessário. Por exemplo, posso fazer deploy na aplicação apenas se os testes passarem.
+
+"Uma boa arquitetura permite que decisões importantes sejam adiadas". Como o uso de databases, por exemplo. Linguagem não pode ser adiada, mas database pode.
+
+"Uma boa arquitetura maximiza os número de decisões não tomadas." **Atingimos isso utilizando o Plugin model**
+
+Utilizar um framework de injeção de dependência é bom, mas você não quer Use case dependa de um framework, ELE DEVE SER INDEPENDENTE DISSO E DE QUALQUER OUTRA TECNOLOGIA. Você pode injetar factorys.
+
+Fonte:
+https://www.youtube.com/watch?v=o_TH-Y78tt4
