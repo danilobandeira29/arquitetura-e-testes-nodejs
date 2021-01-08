@@ -9009,3 +9009,14 @@ Utilizar um framework de injeção de dependência é bom, mas você não quer U
 
 Fonte:
 https://www.youtube.com/watch?v=o_TH-Y78tt4
+
+### Entendimento resumido de algumas coisas
+
+- Controller/Adapter irá pegar a requisição, adaptar a mandar para dentro da aplicação.
+- Já o PRESENTER, irá transformar a resposta para que seja entendível para o mundo externo.
+- Se o pessoal de negócio(Business Expert) chama de client, então será client na aplicação e não user.
+- Se eu alterar o nome de um Cliente, ele continuará sendo meu cliente.
+- Conceito chamado de Value Object, pois ele é um objeto de valor. Ele não tem uma identidade própria, pois ele é baseado nos valores dele. Diferente do Cliente, que é baseado na identidade dele mesmo.
+- Endereço também tem seus atributos, porém, se eu alterar o nome da rua ou cep será outro endereço. O endereço é o mesmo endereço só se ele tiver os mesmos atributos.
+- Adicionar items ao carrinho faz parte de quem o carrinho é.
+- Assim como um usuário alterar o seu nome faz parte de quem ele é.
