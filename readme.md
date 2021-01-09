@@ -9020,3 +9020,6 @@ https://www.youtube.com/watch?v=o_TH-Y78tt4
 - Endereço também tem seus atributos, porém, se eu alterar o nome da rua ou cep será outro endereço. O endereço é o mesmo endereço só se ele tiver os mesmos atributos.
 - Adicionar items ao carrinho faz parte de quem o carrinho é.
 - Assim como um usuário alterar o seu nome faz parte de quem ele é.
+- Entity - O que o sistema é
+- Use cases, Interactors - O que o sistema faz(services)
+- Adapter irá adaptar a requisição para o service(use case)
