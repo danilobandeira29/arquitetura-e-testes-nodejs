@@ -9023,3 +9023,8 @@ https://www.youtube.com/watch?v=o_TH-Y78tt4
 - Entity - O que o sistema é
 - Use cases, Interactors - O que o sistema faz(services)
 - Adapter irá adaptar a requisição para o service(use case)
+- Cliente irá solicitar algo, o controller irá pegar a requisição, traduzir(request model, httprequest alguma interface do tipo) e mandará para o use case(service)
+- O service irá interagir com as entidades e irá receber os dados de respostas das entidades.
+- Depois, o service irá interagir com o banco de dados, repositório para persistir os dados
+- Nessa caso, o service irá falar com a entity para gerar uma nova instância da entity. A entity irá devolver para o service, e o service irá pesistir os dados usando um repository.
+- Depois o service irá traduzir os dados(result model, httpresponse) para o presenter;controller. E o presenter irá devolver um json para o usuário(UI, Web, mobile).
